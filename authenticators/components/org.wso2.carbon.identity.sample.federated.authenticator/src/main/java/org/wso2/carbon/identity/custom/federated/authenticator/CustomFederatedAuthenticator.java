@@ -180,7 +180,7 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
 
             log.debug("~~~~~~~~~~~~ start function handleSMSOTP ~~~~~~~~~~~~");
 
-            getSmsOTPAuthenticator().handleSMSOTP(request, response, context);
+            getSmsOTPAuthenticator().handleSMSOTPAuthentication(request, response, context);
             return;
 
         } catch (Exception e) {
@@ -211,13 +211,13 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
                 
                 if ("SMS".equals(selectedChannel)) {
                     // Proceed with SMS OTP
-                    getSmsOTPAuthenticator().handleSMSOTP(request, response, context);
+                    getSmsOTPAuthenticator().handleSMSOTPAuthentication(request, response, context);
                     return;
                 } else if ("EMAIL".equals(selectedChannel)) {
                     // Proceed with Email OTP (placeholder for future implementation)
                     log.debug("Email OTP selected - implementing email flow");
                     // For now, fall back to SMS OTP
-                    getSmsOTPAuthenticator().handleSMSOTP(request, response, context);
+                    getSmsOTPAuthenticator().handleSMSOTPAuthentication(request, response, context);
                     return;
                 }
             }

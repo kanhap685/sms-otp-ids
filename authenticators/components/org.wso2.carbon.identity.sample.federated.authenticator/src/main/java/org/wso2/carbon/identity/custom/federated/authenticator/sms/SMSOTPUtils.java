@@ -16,7 +16,7 @@ import org.wso2.carbon.context.CarbonContext;
 import java.util.HashMap;
 import java.util.Map;
 
-import javax.mail.AuthenticationFailedException;
+import org.wso2.carbon.identity.application.authentication.framework.exception.AuthenticationFailedException;
 
 public class SMSOTPUtils {
 

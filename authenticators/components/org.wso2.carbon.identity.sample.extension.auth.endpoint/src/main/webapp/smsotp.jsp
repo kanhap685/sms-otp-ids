@@ -39,12 +39,28 @@
     String actualOtpSent = null;
     try {
         AuthenticationContext authContext = FrameworkUtils.getAuthenticationContextFromCache(sessionDataKey);
+        System.out.println("DEBUG: AuthenticationContext retrieved: " + (authContext != null ? "SUCCESS" : "NULL"));
+        System.out.println("DEBUG: SessionDataKey: " + sessionDataKey);
+        
         if (authContext != null) {
             actualOtpSent = (String) authContext.getProperty("CLIENT_OTP_VALIDATION");
+            System.out.println("DEBUG: actualOtpSent from CLIENT_OTP_VALIDATION: " + actualOtpSent);
+            
+            // Log all context properties for debugging
+            System.out.println("DEBUG: All context properties:");
+            if (authContext.getProperties() != null) {
+                for (Object key : authContext.getProperties().keySet()) {
+                    Object value = authContext.getProperty(key.toString());
+                    System.out.println("  " + key + " = " + value);
+                }
+            }
         }
     } catch (Exception e) {
+        System.out.println("DEBUG: Exception getting AuthenticationContext: " + e.getMessage());
+        e.printStackTrace();
         // Fallback to parameter if context access fails
         actualOtpSent = request.getParameter("actualOtpSent");
+        System.out.println("DEBUG: actualOtpSent from request parameter: " + actualOtpSent);
     }
     
     // SMS Payload parameter - try to get from authentication context first
@@ -53,10 +69,13 @@
         AuthenticationContext authContext = FrameworkUtils.getAuthenticationContextFromCache(sessionDataKey);
         if (authContext != null) {
             smsPayload = (String) authContext.getProperty("SMS_PAYLOAD_CONFIG");
+            System.out.println("DEBUG: smsPayload from SMS_PAYLOAD_CONFIG: " + smsPayload);
         }
     } catch (Exception e) {
+        System.out.println("DEBUG: Exception getting SMS payload from context: " + e.getMessage());
         // Fallback to parameter if context access fails
         smsPayload = request.getParameter("smsPayload");
+        System.out.println("DEBUG: smsPayload from request parameter: " + smsPayload);
     }
     
     // If still null, try parameter fallback
@@ -495,13 +514,11 @@
                     
                     if (pasteData.length === activeOtpLength) {
                         // Check pasted OTP against actual value from backend or fallback
-                        const expectedOtp = actualOtpSent || "1234"; // Fallback to 1234 for testing
+                        const expectedOtp = actualOtpSent;
                         
                         // Check Invalid OTP code
                         if (pasteData !== expectedOtp) {
-                            const errorMsg = actualOtpSent 
-                                ? 'รหัส OTP ไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง / Invalid OTP code. Please try again.'
-                                : 'รหัส OTP ไม่ถูกต้อง (ทดสอบ: ใช้ 1234) / Invalid OTP code (Test: use 1234).';
+                            const errorMsg = 'รหัส OTP ไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง / Invalid OTP code. Please try again.';
                             showOtpError(errorMsg);
                             return;
                         }
@@ -594,14 +611,12 @@
                     }
 
                     // Check OTP against actual value from backend or fallback
-                    const expectedOtp = actualOtpSent || "1234"; // Fallback to 1234 for testing
-                    
+                    const expectedOtp = actualOtpSent;
+
                     // Check Invalid OTP code
                     if (otpValue !== expectedOtp) {
                         e.preventDefault();
-                        const errorMsg = actualOtpSent 
-                            ? 'รหัส OTP ไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง / Invalid OTP code. Please try again.'
-                            : 'รหัส OTP ไม่ถูกต้อง (ทดสอบ: ใช้ 1234) / Invalid OTP code (Test: use 1234).';
+                        const errorMsg = 'รหัส OTP ไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง / Invalid OTP code. Please try again.';
                         showOtpError(errorMsg);
                         return;
                     }

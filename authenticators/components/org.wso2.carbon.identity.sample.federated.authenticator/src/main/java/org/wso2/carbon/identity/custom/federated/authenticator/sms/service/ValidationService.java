@@ -227,6 +227,39 @@ public class ValidationService {
     }
 
     /**
+     * Validates email address format
+     * 
+     * @param email Email address to validate
+     * @return ValidationResult containing validation status and message
+     */
+    public ValidationResult validateEmailAddress(String email) {
+        if (StringUtils.isBlank(email)) {
+            return new ValidationResult(false, "Email address is required");
+        }
+        
+        String cleanEmail = email.trim();
+        
+        // Basic email format validation using regex
+        String emailRegex = "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$";
+        if (!cleanEmail.matches(emailRegex)) {
+            return new ValidationResult(false, "Invalid email address format");
+        }
+        
+        // Check email length (reasonable limits)
+        if (cleanEmail.length() > 254) {
+            return new ValidationResult(false, "Email address is too long");
+        }
+        
+        // Check local part length (before @)
+        String[] parts = cleanEmail.split("@");
+        if (parts.length == 2 && parts[0].length() > 64) {
+            return new ValidationResult(false, "Email local part is too long");
+        }
+        
+        return new ValidationResult(true, "Valid email address");
+    }
+
+    /**
      * Result class for validation operations
      */
     public static class ValidationResult {

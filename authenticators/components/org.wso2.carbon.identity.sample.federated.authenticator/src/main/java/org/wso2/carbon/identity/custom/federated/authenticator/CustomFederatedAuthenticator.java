@@ -12,6 +12,7 @@ import org.wso2.carbon.identity.application.common.model.Property;
 import org.wso2.carbon.identity.custom.federated.authenticator.sms.SMSOTPAuthenticator;
 import org.wso2.carbon.identity.custom.federated.authenticator.sms.SMSOTPConstants;
 import org.wso2.carbon.identity.custom.federated.authenticator.sms.SMSOTPUtils;
+import org.wso2.carbon.identity.custom.federated.authenticator.email.EmailOTPAuthenticator;
 
 import net.minidev.json.JSONObject;
 
@@ -28,12 +29,20 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
 
     private static final Log log = LogFactory.getLog(CustomFederatedAuthenticator.class);
     private transient SMSOTPAuthenticator smsOTPAuthenticator;
+    private transient EmailOTPAuthenticator emailOTPAuthenticator;
 
     private SMSOTPAuthenticator getSmsOTPAuthenticator() {
         if (smsOTPAuthenticator == null) {
             smsOTPAuthenticator = new SMSOTPAuthenticator();
         }
         return smsOTPAuthenticator;
+    }
+
+    private EmailOTPAuthenticator getEmailOTPAuthenticator() {
+        if (emailOTPAuthenticator == null) {
+            emailOTPAuthenticator = new EmailOTPAuthenticator();
+        }
+        return emailOTPAuthenticator;
     }
 
     @Override
@@ -62,13 +71,36 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
         List<Property> configProperties = new ArrayList<Property>();
 
         // ================================
+        // General Settings (Both SMS and EMAIL)
+        // ================================
+        Property generalTab = new Property();
+        generalTab.setName("general_settings_tab");
+        generalTab.setDisplayName("⚙️ General Settings ******************************");
+        generalTab.setType("tab");
+        generalTab.setDisplayOrder(0);
+        generalTab.setRequired(false);
+        generalTab.setDescription("Configure general OTP authentication settings");
+        configProperties.add(generalTab);
+
+        Property defaultOtpType = new Property();
+        defaultOtpType.setName("DEFAULT_OTP_TYPE");
+        defaultOtpType.setDisplayName("Default OTP Type");
+        defaultOtpType.setRequired(false);
+        defaultOtpType.setDescription("Select the default OTP type for authentication");
+        defaultOtpType.setDisplayOrder(1);
+        defaultOtpType.setType("select");
+        defaultOtpType.setOptions(new String[] { "sms", "email" });
+        defaultOtpType.setValue("sms");
+        configProperties.add(defaultOtpType);
+
+        // ================================
         // Tab 1: SMS Settings
         // ================================
         Property smsTab = new Property();
         smsTab.setName("sms_settings_tab");
         smsTab.setDisplayName("📱 SMS Settings ******************************");
         smsTab.setType("tab");
-        smsTab.setDisplayOrder(0);
+        smsTab.setDisplayOrder(2);
         smsTab.setRequired(false);
         smsTab.setDescription("Configure SMS OTP authentication settings");
         configProperties.add(smsTab);
@@ -80,7 +112,7 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
         smsUrl.setRequired(true);
         smsUrl.setDescription("Enter client sms url value. If the phone number and text message are in URL, " +
                 "specify them as $ctx.num and $ctx.msg");
-        smsUrl.setDisplayOrder(1);
+        smsUrl.setDisplayOrder(3);
         smsUrl.setType("string");
         configProperties.add(smsUrl);
 
@@ -89,7 +121,7 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
         httpMethod.setDisplayName("HTTP Method");
         httpMethod.setRequired(true);
         httpMethod.setDescription("Enter the HTTP Method used by the SMS API");
-        httpMethod.setDisplayOrder(2);
+        httpMethod.setDisplayOrder(4);
         httpMethod.setType("select");
         httpMethod.setOptions(new String[] { "GET", "POST", "PUT" });
         configProperties.add(httpMethod);
@@ -100,7 +132,7 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
         headers.setRequired(false);
         headers.setDescription("Enter the headers used by the API separated by comma, with the Header name and value " +
                 "separated by \":\". If the phone number and text message are in Headers, specify them as $ctx.num and $ctx.msg");
-        headers.setDisplayOrder(3);
+        headers.setDisplayOrder(5);
         headers.setType("textarea");
         configProperties.add(headers);
 
@@ -110,7 +142,7 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
         payload.setRequired(false);
         payload.setDescription("Enter the HTTP Payload used by the SMS API. If the phone number and text message are " +
                 "in Payload, specify them as $ctx.num and $ctx.msg");
-        payload.setDisplayOrder(4);
+        payload.setDisplayOrder(6);
         payload.setType("textarea");
         configProperties.add(payload);
 
@@ -120,7 +152,7 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
         httpResponse.setRequired(false);
         httpResponse.setDescription(
                 "Enter the HTTP response code the API sends upon successful call. Leave empty if unknown");
-        httpResponse.setDisplayOrder(5);
+        httpResponse.setDisplayOrder(7);
         httpResponse.setType("string");
         configProperties.add(httpResponse);
 
@@ -129,7 +161,7 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
         smsErrorHeader.setName("sms_error_handling_header");
         smsErrorHeader.setDisplayName("SMS Error Handling");
         smsErrorHeader.setType("header");
-        smsErrorHeader.setDisplayOrder(6);
+        smsErrorHeader.setDisplayOrder(8);
         smsErrorHeader.setRequired(false);
         smsErrorHeader.setDescription("Configure SMS error handling and debugging options");
         configProperties.add(smsErrorHeader);
@@ -140,7 +172,7 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
         showErrorInfo.setRequired(false);
         showErrorInfo.setDescription("Enter \"true\" if detailed error information from SMS provider needs to be " +
                 "displayed in the UI");
-        showErrorInfo.setDisplayOrder(7);
+        showErrorInfo.setDisplayOrder(9);
         showErrorInfo.setType("boolean");
         configProperties.add(showErrorInfo);
 
@@ -150,7 +182,7 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
         valuesToBeMasked.setRequired(false);
         valuesToBeMasked
                 .setDescription("Enter comma separated Values to be masked by * in the detailed error messages");
-        valuesToBeMasked.setDisplayOrder(8);
+        valuesToBeMasked.setDisplayOrder(10);
         valuesToBeMasked.setType("string");
         configProperties.add(valuesToBeMasked);
 
@@ -161,7 +193,7 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
         emailTab.setName("email_settings_tab");
         emailTab.setDisplayName("📧 EMAIL Settings ******************************");
         emailTab.setType("tab");
-        emailTab.setDisplayOrder(9);
+        emailTab.setDisplayOrder(11);
         emailTab.setRequired(false);
         emailTab.setDescription("Configure Email OTP authentication settings");
         configProperties.add(emailTab);
@@ -173,7 +205,7 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
         emailUrl.setRequired(false);
         emailUrl.setDescription("Enter client email url value. If the email address and message are in URL, " +
                 "specify them as $ctx.email and $ctx.msg");
-        emailUrl.setDisplayOrder(10);
+        emailUrl.setDisplayOrder(12);
         emailUrl.setType("string");
         configProperties.add(emailUrl);
 
@@ -182,7 +214,7 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
         emailMethod.setDisplayName("HTTP Method");
         emailMethod.setRequired(false);
         emailMethod.setDescription("Enter the HTTP Method used by the Email API");
-        emailMethod.setDisplayOrder(11);
+        emailMethod.setDisplayOrder(13);
         emailMethod.setType("select");
         emailMethod.setOptions(new String[] { "GET", "POST", "PUT" });
         configProperties.add(emailMethod);
@@ -194,7 +226,7 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
         emailHeaders.setDescription(
                 "Enter the headers used by the API separated by comma, with the Header name and value " +
                         "separated by \":\". If the email address and message are in Headers, specify them as $ctx.email and $ctx.msg");
-        emailHeaders.setDisplayOrder(12);
+        emailHeaders.setDisplayOrder(14);
         emailHeaders.setType("textarea");
         configProperties.add(emailHeaders);
 
@@ -205,7 +237,7 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
         emailPayload
                 .setDescription("Enter the HTTP Payload used by the Email API. If the email address and message are " +
                         "in Payload, specify them as $ctx.email and $ctx.msg");
-        emailPayload.setDisplayOrder(13);
+        emailPayload.setDisplayOrder(15);
         emailPayload.setType("textarea");
         configProperties.add(emailPayload);
 
@@ -215,7 +247,7 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
         emailResponse.setRequired(false);
         emailResponse.setDescription(
                 "Enter the HTTP response code the API sends upon successful call. Leave empty if unknown");
-        emailResponse.setDisplayOrder(14);
+        emailResponse.setDisplayOrder(16);
         emailResponse.setType("string");
         configProperties.add(emailResponse);
 
@@ -224,7 +256,7 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
         emailErrorHeader.setName("email_error_handling_header");
         emailErrorHeader.setDisplayName("Email Error Handling");
         emailErrorHeader.setType("header");
-        emailErrorHeader.setDisplayOrder(15);
+        emailErrorHeader.setDisplayOrder(17);
         emailErrorHeader.setRequired(false);
         emailErrorHeader.setDescription("Configure Email error handling and debugging options");
         configProperties.add(emailErrorHeader);
@@ -236,7 +268,7 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
         emailShowErrorInfo
                 .setDescription("Enter \"true\" if detailed error information from Email provider needs to be " +
                         "displayed in the UI");
-        emailShowErrorInfo.setDisplayOrder(16);
+        emailShowErrorInfo.setDisplayOrder(18);
         emailShowErrorInfo.setType("boolean");
         configProperties.add(emailShowErrorInfo);
 
@@ -246,7 +278,7 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
         emailValuesToBeMasked.setRequired(false);
         emailValuesToBeMasked
                 .setDescription("Enter comma separated Values to be masked by * in the detailed error messages");
-        emailValuesToBeMasked.setDisplayOrder(17);
+        emailValuesToBeMasked.setDisplayOrder(19);
         emailValuesToBeMasked.setType("string");
         configProperties.add(emailValuesToBeMasked);
 
@@ -257,7 +289,9 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
     protected void initiateAuthenticationRequest(HttpServletRequest request, HttpServletResponse response,
             AuthenticationContext context) throws AuthenticationFailedException {
 
-        String type = "email"; // sms or email
+        // Determine OTP type - can be configured via authenticator properties
+        // or through user preference/request parameter
+        String type = determineOTPType(request, context);
 
         if (context == null) {
             log.error("AuthenticationContext is null");
@@ -318,6 +352,7 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
 
             if ("email".equals(type)) {
                 log.debug("~~~~~~~~~~~~ start function handleEmailOTPAuthentication ~~~~~~~~~~~~");
+                getEmailOTPAuthenticator().handleEmailOTPAuthentication(request, response, context);
             }
 
             return;
@@ -353,16 +388,22 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
                     getSmsOTPAuthenticator().handleSMSOTPAuthentication(request, response, context);
                     return;
                 } else if ("EMAIL".equals(selectedChannel)) {
-                    // Proceed with Email OTP (placeholder for future implementation)
+                    // Proceed with Email OTP
                     log.debug("Email OTP selected - implementing email flow");
-                    // For now, fall back to SMS OTP
-                    getSmsOTPAuthenticator().handleSMSOTPAuthentication(request, response, context);
+                    getEmailOTPAuthenticator().handleEmailOTPAuthentication(request, response, context);
                     return;
                 }
             }
 
-            // Process SMS OTP authentication response
-            getSmsOTPAuthenticator().processAuthenticationResponse(request, response, context);
+            // Determine which OTP type to process based on context
+            String otpChannelInContext = (String) context.getProperty("SELECTED_OTP_CHANNEL");
+            if ("EMAIL".equals(otpChannelInContext)) {
+                // Process Email OTP authentication response
+                getEmailOTPAuthenticator().processAuthenticationResponse(request, response, context);
+            } else {
+                // Process SMS OTP authentication response (default)
+                getSmsOTPAuthenticator().processAuthenticationResponse(request, response, context);
+            }
         } catch (Exception e) {
             log.error("Error processing authentication response", e);
             redirectToErrorPage(response, context, "Error processing authentication response. Please try again.");
@@ -499,5 +540,33 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
             log.error("Error redirecting to error page", e);
             throw new AuthenticationFailedException("Error redirecting to error page", e);
         }
+    }
+
+    /**
+     * Determines the OTP type to use (SMS or EMAIL)
+     * Can be configured via request parameter, authenticator properties, or default logic
+     */
+    private String determineOTPType(HttpServletRequest request, AuthenticationContext context) {
+        // Check if OTP type is specified in request parameter
+        String requestOtpType = request.getParameter("otpType");
+        if (StringUtils.isNotEmpty(requestOtpType)) {
+            if ("sms".equalsIgnoreCase(requestOtpType) || "email".equalsIgnoreCase(requestOtpType)) {
+                return requestOtpType.toLowerCase();
+            }
+        }
+        
+        // Check if OTP type is configured in authenticator properties
+        if (context != null && context.getAuthenticatorProperties() != null) {
+            Map<String, String> authenticatorProperties = context.getAuthenticatorProperties();
+            String configuredOtpType = authenticatorProperties.get("DEFAULT_OTP_TYPE");
+            if (StringUtils.isNotEmpty(configuredOtpType)) {
+                if ("sms".equalsIgnoreCase(configuredOtpType) || "email".equalsIgnoreCase(configuredOtpType)) {
+                    return configuredOtpType.toLowerCase();
+                }
+            }
+        }
+        
+        // Default to SMS OTP for backward compatibility
+        return "sms";
     }
 }

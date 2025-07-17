@@ -91,7 +91,7 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
         httpMethod.setDescription("Enter the HTTP Method used by the SMS API");
         httpMethod.setDisplayOrder(2);
         httpMethod.setType("select");
-        httpMethod.setOptions(new String[]{"GET", "POST", "PUT"});
+        httpMethod.setOptions(new String[] { "GET", "POST", "PUT" });
         configProperties.add(httpMethod);
 
         Property headers = new Property();
@@ -184,15 +184,16 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
         emailMethod.setDescription("Enter the HTTP Method used by the Email API");
         emailMethod.setDisplayOrder(11);
         emailMethod.setType("select");
-        emailMethod.setOptions(new String[]{"GET", "POST", "PUT"});
+        emailMethod.setOptions(new String[] { "GET", "POST", "PUT" });
         configProperties.add(emailMethod);
 
         Property emailHeaders = new Property();
         emailHeaders.setName("EMAIL_HEADERS");
         emailHeaders.setDisplayName("HTTP Headers");
         emailHeaders.setRequired(false);
-        emailHeaders.setDescription("Enter the headers used by the API separated by comma, with the Header name and value " +
-                "separated by \":\". If the email address and message are in Headers, specify them as $ctx.email and $ctx.msg");
+        emailHeaders.setDescription(
+                "Enter the headers used by the API separated by comma, with the Header name and value " +
+                        "separated by \":\". If the email address and message are in Headers, specify them as $ctx.email and $ctx.msg");
         emailHeaders.setDisplayOrder(12);
         emailHeaders.setType("textarea");
         configProperties.add(emailHeaders);
@@ -201,8 +202,9 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
         emailPayload.setName("EMAIL_PAYLOAD");
         emailPayload.setDisplayName("HTTP Payload");
         emailPayload.setRequired(false);
-        emailPayload.setDescription("Enter the HTTP Payload used by the Email API. If the email address and message are " +
-                "in Payload, specify them as $ctx.email and $ctx.msg");
+        emailPayload
+                .setDescription("Enter the HTTP Payload used by the Email API. If the email address and message are " +
+                        "in Payload, specify them as $ctx.email and $ctx.msg");
         emailPayload.setDisplayOrder(13);
         emailPayload.setType("textarea");
         configProperties.add(emailPayload);
@@ -231,8 +233,9 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
         emailShowErrorInfo.setName("EMAIL_SHOW_ERROR_INFO");
         emailShowErrorInfo.setDisplayName("Show Detailed Error Information");
         emailShowErrorInfo.setRequired(false);
-        emailShowErrorInfo.setDescription("Enter \"true\" if detailed error information from Email provider needs to be " +
-                "displayed in the UI");
+        emailShowErrorInfo
+                .setDescription("Enter \"true\" if detailed error information from Email provider needs to be " +
+                        "displayed in the UI");
         emailShowErrorInfo.setDisplayOrder(16);
         emailShowErrorInfo.setType("boolean");
         configProperties.add(emailShowErrorInfo);
@@ -254,6 +257,8 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
     protected void initiateAuthenticationRequest(HttpServletRequest request, HttpServletResponse response,
             AuthenticationContext context) throws AuthenticationFailedException {
 
+        String type = "email"; // sms or email
+
         if (context == null) {
             log.error("AuthenticationContext is null");
             redirectToErrorPage(response, context, "Authentication context is invalid. Please try again.");
@@ -261,11 +266,12 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
         }
 
         try {
-            
+
             Map<String, String> authenticatorProperties = context.getAuthenticatorProperties();
             if (authenticatorProperties == null) {
                 log.error("Authenticator properties is null");
-                redirectToErrorPage(response, context, "Authenticator configuration is missing. Please contact administrator.");
+                redirectToErrorPage(response, context,
+                        "Authenticator configuration is missing. Please contact administrator.");
                 return;
             }
 
@@ -273,7 +279,8 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
 
             if (StringUtils.isEmpty(payload)) {
                 log.error("Payload is empty or null");
-                redirectToErrorPage(response, context, "SMS service configuration is missing. Please contact administrator.");
+                redirectToErrorPage(response, context,
+                        "SMS service configuration is missing. Please contact administrator.");
                 return;
             }
 
@@ -284,26 +291,35 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
                 root = (JSONObject) parser.parse(payload); // {"sendOneTimePW":{...}}
             } catch (net.minidev.json.parser.ParseException e) {
                 log.error("Failed to parse payload JSON", e);
-                redirectToErrorPage(response, context, "Invalid SMS service configuration. Please contact administrator.");
+                redirectToErrorPage(response, context,
+                        "Invalid SMS service configuration. Please contact administrator.");
                 return;
             }
 
             if (root == null) {
                 log.error("Parsed JSON root is null");
-                redirectToErrorPage(response, context, "Invalid SMS service configuration. Please contact administrator.");
+                redirectToErrorPage(response, context,
+                        "Invalid SMS service configuration. Please contact administrator.");
                 return;
             }
 
             JSONObject sendOTP = (JSONObject) root.get("sendOneTimePW"); // {...}
             if (sendOTP == null) {
                 log.error("sendOneTimePW object not found in payload");
-                redirectToErrorPage(response, context, "SMS service configuration is incomplete. Please contact administrator.");
+                redirectToErrorPage(response, context,
+                        "SMS service configuration is incomplete. Please contact administrator.");
                 return;
             }
 
-            log.debug("~~~~~~~~~~~~ start function handleSMSOTP ~~~~~~~~~~~~");
+            if ("sms".equals(type)) {
+                log.debug("~~~~~~~~~~~~ start function handleSMSOTPAuthentication ~~~~~~~~~~~~");
+                getSmsOTPAuthenticator().handleSMSOTPAuthentication(request, response, context);
+            }
 
-            getSmsOTPAuthenticator().handleSMSOTPAuthentication(request, response, context);
+            if ("email".equals(type)) {
+                log.debug("~~~~~~~~~~~~ start function handleEmailOTPAuthentication ~~~~~~~~~~~~");
+            }
+
             return;
 
         } catch (Exception e) {
@@ -328,10 +344,10 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
             String selectedChannel = request.getParameter("otpChannel");
             if (StringUtils.isNotEmpty(selectedChannel)) {
                 log.debug("Processing channel selection: " + selectedChannel);
-                
+
                 // Store the selected channel in context
                 context.setProperty("SELECTED_OTP_CHANNEL", selectedChannel);
-                
+
                 if ("SMS".equals(selectedChannel)) {
                     // Proceed with SMS OTP
                     getSmsOTPAuthenticator().handleSMSOTPAuthentication(request, response, context);
@@ -344,7 +360,7 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
                     return;
                 }
             }
-            
+
             // Process SMS OTP authentication response
             getSmsOTPAuthenticator().processAuthenticationResponse(request, response, context);
         } catch (Exception e) {
@@ -438,44 +454,47 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
             if (context != null) {
                 queryParams = context.getContextIdIncludedQueryParams();
             }
-            
+
             String errorPage = getErrorPage(context);
             String redirectUrl = getURL(errorPage, queryParams, getName());
-            
+
             // Add error message parameters
             String errorParam = "";
             if (StringUtils.isNotEmpty(errorMessage)) {
                 errorParam = "&authFailure=true&authFailureMsg=" + java.net.URLEncoder.encode(errorMessage, "UTF-8");
             }
-            
+
             // Add error code if available
             if (context != null && context.getProperty(SMSOTPConstants.ERROR_CODE) != null) {
-                errorParam += "&errorCode=" + java.net.URLEncoder.encode(context.getProperty(SMSOTPConstants.ERROR_CODE).toString(), "UTF-8");
+                errorParam += "&errorCode=" + java.net.URLEncoder
+                        .encode(context.getProperty(SMSOTPConstants.ERROR_CODE).toString(), "UTF-8");
             }
-            
+
             // Add error info if available and configured to show
             if (context != null && context.getAuthenticatorProperties() != null) {
                 Map<String, String> authenticatorProperties = context.getAuthenticatorProperties();
                 if (context.getProperty(SMSOTPConstants.ERROR_INFO) != null &&
-                    Boolean.parseBoolean(authenticatorProperties.get(SMSOTPConstants.SHOW_ERROR_INFO))) {
+                        Boolean.parseBoolean(authenticatorProperties.get(SMSOTPConstants.SHOW_ERROR_INFO))) {
                     String errorInfo = context.getProperty(SMSOTPConstants.ERROR_INFO).toString();
                     try {
-                        errorParam += "&errorInfo=" + java.util.Base64.getEncoder().encodeToString(errorInfo.getBytes("UTF-8"));
+                        errorParam += "&errorInfo="
+                                + java.util.Base64.getEncoder().encodeToString(errorInfo.getBytes("UTF-8"));
                     } catch (java.io.UnsupportedEncodingException e) {
                         log.warn("UTF-8 encoding not supported, using default encoding", e);
-                        errorParam += "&errorInfo=" + java.util.Base64.getEncoder().encodeToString(errorInfo.getBytes());
+                        errorParam += "&errorInfo="
+                                + java.util.Base64.getEncoder().encodeToString(errorInfo.getBytes());
                     }
                 }
             }
-            
+
             String finalRedirectUrl = redirectUrl + errorParam;
-            
+
             if (log.isDebugEnabled()) {
                 log.debug("Redirecting to error page: " + finalRedirectUrl);
             }
-            
+
             response.sendRedirect(finalRedirectUrl);
-            
+
         } catch (java.io.IOException e) {
             log.error("Error redirecting to error page", e);
             throw new AuthenticationFailedException("Error redirecting to error page", e);

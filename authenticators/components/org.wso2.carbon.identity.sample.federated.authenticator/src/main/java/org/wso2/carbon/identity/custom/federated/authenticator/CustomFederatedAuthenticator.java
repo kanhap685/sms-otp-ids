@@ -61,6 +61,18 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
     public List<Property> getConfigurationProperties() {
         List<Property> configProperties = new ArrayList<Property>();
 
+        // ================================
+        // Tab 1: SMS Settings
+        // ================================
+        Property smsTab = new Property();
+        smsTab.setName("sms_settings_tab");
+        smsTab.setDisplayName("📱 SMS Settings ******************************");
+        smsTab.setType("tab");
+        smsTab.setDisplayOrder(0);
+        smsTab.setRequired(false);
+        smsTab.setDescription("Configure SMS OTP authentication settings");
+        configProperties.add(smsTab);
+
         // SMS Configuration Properties
         Property smsUrl = new Property();
         smsUrl.setName(SMSOTPConstants.SMS_URL);
@@ -68,7 +80,8 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
         smsUrl.setRequired(true);
         smsUrl.setDescription("Enter client sms url value. If the phone number and text message are in URL, " +
                 "specify them as $ctx.num and $ctx.msg");
-        smsUrl.setDisplayOrder(0);
+        smsUrl.setDisplayOrder(1);
+        smsUrl.setType("string");
         configProperties.add(smsUrl);
 
         Property httpMethod = new Property();
@@ -76,7 +89,9 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
         httpMethod.setDisplayName("HTTP Method");
         httpMethod.setRequired(true);
         httpMethod.setDescription("Enter the HTTP Method used by the SMS API");
-        httpMethod.setDisplayOrder(1);
+        httpMethod.setDisplayOrder(2);
+        httpMethod.setType("select");
+        httpMethod.setOptions(new String[]{"GET", "POST", "PUT"});
         configProperties.add(httpMethod);
 
         Property headers = new Property();
@@ -85,7 +100,8 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
         headers.setRequired(false);
         headers.setDescription("Enter the headers used by the API separated by comma, with the Header name and value " +
                 "separated by \":\". If the phone number and text message are in Headers, specify them as $ctx.num and $ctx.msg");
-        headers.setDisplayOrder(2);
+        headers.setDisplayOrder(3);
+        headers.setType("textarea");
         configProperties.add(headers);
 
         Property payload = new Property();
@@ -94,7 +110,8 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
         payload.setRequired(false);
         payload.setDescription("Enter the HTTP Payload used by the SMS API. If the phone number and text message are " +
                 "in Payload, specify them as $ctx.num and $ctx.msg");
-        payload.setDisplayOrder(3);
+        payload.setDisplayOrder(4);
+        payload.setType("textarea");
         configProperties.add(payload);
 
         Property httpResponse = new Property();
@@ -103,8 +120,19 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
         httpResponse.setRequired(false);
         httpResponse.setDescription(
                 "Enter the HTTP response code the API sends upon successful call. Leave empty if unknown");
-        httpResponse.setDisplayOrder(4);
+        httpResponse.setDisplayOrder(5);
+        httpResponse.setType("string");
         configProperties.add(httpResponse);
+
+        // SMS Error Handling Section
+        Property smsErrorHeader = new Property();
+        smsErrorHeader.setName("sms_error_handling_header");
+        smsErrorHeader.setDisplayName("SMS Error Handling");
+        smsErrorHeader.setType("header");
+        smsErrorHeader.setDisplayOrder(6);
+        smsErrorHeader.setRequired(false);
+        smsErrorHeader.setDescription("Configure SMS error handling and debugging options");
+        configProperties.add(smsErrorHeader);
 
         Property showErrorInfo = new Property();
         showErrorInfo.setName(SMSOTPConstants.SHOW_ERROR_INFO);
@@ -112,7 +140,8 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
         showErrorInfo.setRequired(false);
         showErrorInfo.setDescription("Enter \"true\" if detailed error information from SMS provider needs to be " +
                 "displayed in the UI");
-        showErrorInfo.setDisplayOrder(5);
+        showErrorInfo.setDisplayOrder(7);
+        showErrorInfo.setType("boolean");
         configProperties.add(showErrorInfo);
 
         Property valuesToBeMasked = new Property();
@@ -121,8 +150,102 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
         valuesToBeMasked.setRequired(false);
         valuesToBeMasked
                 .setDescription("Enter comma separated Values to be masked by * in the detailed error messages");
-        valuesToBeMasked.setDisplayOrder(6);
+        valuesToBeMasked.setDisplayOrder(8);
+        valuesToBeMasked.setType("string");
         configProperties.add(valuesToBeMasked);
+
+        // ================================
+        // Tab 2: EMAIL Settings
+        // ================================
+        Property emailTab = new Property();
+        emailTab.setName("email_settings_tab");
+        emailTab.setDisplayName("📧 EMAIL Settings ******************************");
+        emailTab.setType("tab");
+        emailTab.setDisplayOrder(9);
+        emailTab.setRequired(false);
+        emailTab.setDescription("Configure Email OTP authentication settings");
+        configProperties.add(emailTab);
+
+        // EMAIL Configuration Properties
+        Property emailUrl = new Property();
+        emailUrl.setName("EMAIL_URL");
+        emailUrl.setDisplayName("Email URL");
+        emailUrl.setRequired(false);
+        emailUrl.setDescription("Enter client email url value. If the email address and message are in URL, " +
+                "specify them as $ctx.email and $ctx.msg");
+        emailUrl.setDisplayOrder(10);
+        emailUrl.setType("string");
+        configProperties.add(emailUrl);
+
+        Property emailMethod = new Property();
+        emailMethod.setName("EMAIL_HTTP_METHOD");
+        emailMethod.setDisplayName("HTTP Method");
+        emailMethod.setRequired(false);
+        emailMethod.setDescription("Enter the HTTP Method used by the Email API");
+        emailMethod.setDisplayOrder(11);
+        emailMethod.setType("select");
+        emailMethod.setOptions(new String[]{"GET", "POST", "PUT"});
+        configProperties.add(emailMethod);
+
+        Property emailHeaders = new Property();
+        emailHeaders.setName("EMAIL_HEADERS");
+        emailHeaders.setDisplayName("HTTP Headers");
+        emailHeaders.setRequired(false);
+        emailHeaders.setDescription("Enter the headers used by the API separated by comma, with the Header name and value " +
+                "separated by \":\". If the email address and message are in Headers, specify them as $ctx.email and $ctx.msg");
+        emailHeaders.setDisplayOrder(12);
+        emailHeaders.setType("textarea");
+        configProperties.add(emailHeaders);
+
+        Property emailPayload = new Property();
+        emailPayload.setName("EMAIL_PAYLOAD");
+        emailPayload.setDisplayName("HTTP Payload");
+        emailPayload.setRequired(false);
+        emailPayload.setDescription("Enter the HTTP Payload used by the Email API. If the email address and message are " +
+                "in Payload, specify them as $ctx.email and $ctx.msg");
+        emailPayload.setDisplayOrder(13);
+        emailPayload.setType("textarea");
+        configProperties.add(emailPayload);
+
+        Property emailResponse = new Property();
+        emailResponse.setName("EMAIL_HTTP_RESPONSE");
+        emailResponse.setDisplayName("HTTP Response Code");
+        emailResponse.setRequired(false);
+        emailResponse.setDescription(
+                "Enter the HTTP response code the API sends upon successful call. Leave empty if unknown");
+        emailResponse.setDisplayOrder(14);
+        emailResponse.setType("string");
+        configProperties.add(emailResponse);
+
+        // EMAIL Error Handling Section
+        Property emailErrorHeader = new Property();
+        emailErrorHeader.setName("email_error_handling_header");
+        emailErrorHeader.setDisplayName("Email Error Handling");
+        emailErrorHeader.setType("header");
+        emailErrorHeader.setDisplayOrder(15);
+        emailErrorHeader.setRequired(false);
+        emailErrorHeader.setDescription("Configure Email error handling and debugging options");
+        configProperties.add(emailErrorHeader);
+
+        Property emailShowErrorInfo = new Property();
+        emailShowErrorInfo.setName("EMAIL_SHOW_ERROR_INFO");
+        emailShowErrorInfo.setDisplayName("Show Detailed Error Information");
+        emailShowErrorInfo.setRequired(false);
+        emailShowErrorInfo.setDescription("Enter \"true\" if detailed error information from Email provider needs to be " +
+                "displayed in the UI");
+        emailShowErrorInfo.setDisplayOrder(16);
+        emailShowErrorInfo.setType("boolean");
+        configProperties.add(emailShowErrorInfo);
+
+        Property emailValuesToBeMasked = new Property();
+        emailValuesToBeMasked.setName("EMAIL_VALUES_TO_BE_MASKED_IN_ERROR_INFO");
+        emailValuesToBeMasked.setDisplayName("Mask values in Error Info");
+        emailValuesToBeMasked.setRequired(false);
+        emailValuesToBeMasked
+                .setDescription("Enter comma separated Values to be masked by * in the detailed error messages");
+        emailValuesToBeMasked.setDisplayOrder(17);
+        emailValuesToBeMasked.setType("string");
+        configProperties.add(emailValuesToBeMasked);
 
         return configProperties;
     }

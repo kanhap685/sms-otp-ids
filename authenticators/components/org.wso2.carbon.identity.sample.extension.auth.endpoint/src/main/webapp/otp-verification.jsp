@@ -1,21 +1,3 @@
-<%--
-  ~ Copyright (c) 2023, WSO2 Inc. (http://www.wso2.org) All Rights Reserved.
-  ~
-  ~ WSO2 Inc. licenses this file to you under the Apache License,
-  ~ Version 2.0 (the "License"); you may not use this file except
-  ~ in compliance with the License.
-  ~ You may obtain a copy of the License at
-  ~
-  ~ http://www.apache.org/licenses/LICENSE-2.0
-  ~
-  ~ Unless required by applicable law or agreed to in writing,
-  ~ software distributed under the License is distributed on an
-  ~ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-  ~ KIND, either express or implied.  See the License for the
-  ~ specific language governing permissions and limitations
-  ~ under the License.
-  --%>
-
 <%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" %>
 <%@ page import="java.util.Map" %>
 <%@ page import="java.util.HashMap" %>
@@ -471,18 +453,18 @@
         if (otpSentTimeElement && otpSentTimeElement.value) {
             try {
                 serverOtpSentTime = parseInt(otpSentTimeElement.value);
-                console.log('DEBUG: Server OTP sent time retrieved:', serverOtpSentTime);
+                // console.log('DEBUG: Server OTP sent time retrieved:', serverOtpSentTime);
             } catch (e) {
-                console.log('DEBUG: Error parsing server OTP sent time:', e);
+                // console.log('DEBUG: Error parsing server OTP sent time:', e);
             }
         }
         
         if (tokenValidityElement && tokenValidityElement.value) {
             try {
                 serverTokenValidityMinutes = parseFloat(tokenValidityElement.value);
-                console.log('DEBUG: Server token validity retrieved:', serverTokenValidityMinutes);
+                // console.log('DEBUG: Server token validity retrieved:', serverTokenValidityMinutes);
             } catch (e) {
-                console.log('DEBUG: Error parsing server token validity:', e);
+                // console.log('DEBUG: Error parsing server token validity:', e);
             }
         }
         
@@ -548,12 +530,12 @@
             
             if (otpSentTimeElement && otpSentTimeElement.value) {
                 serverOtpSentTime = parseInt(otpSentTimeElement.value);
-                console.log('DEBUG: Server OTP sent time:', serverOtpSentTime, 'Date:', new Date(serverOtpSentTime));
+                // console.log('DEBUG: Server OTP sent time:', serverOtpSentTime, 'Date:', new Date(serverOtpSentTime));
             }
             
             if (tokenValidityElement && tokenValidityElement.value) {
                 serverTokenValidityMinutes = parseFloat(tokenValidityElement.value);
-                console.log('DEBUG: Server token validity (minutes):', serverTokenValidityMinutes);
+                // console.log('DEBUG: Server token validity (minutes):', serverTokenValidityMinutes);
             }
 
             // Process SMS payload if available
@@ -561,18 +543,18 @@
             let expectedOtpLength = 4; // Default OTP length
             let lifeTimeoutMinutes = 0.5; // Default 30 seconds (0.5 minutes)
             
-            console.log('DEBUG: smsPayloadElement exists:', !!smsPayloadElement);
-            console.log('DEBUG: smsPayloadElement.value:', smsPayloadElement ? smsPayloadElement.value : 'null');
+            // console.log('DEBUG: smsPayloadElement exists:', !!smsPayloadElement);
+            // console.log('DEBUG: smsPayloadElement.value:', smsPayloadElement ? smsPayloadElement.value : 'null');
             
             if (smsPayloadElement && smsPayloadElement.value) {
                 try {
                     const rawPayload = smsPayloadElement.value;
-                    console.log('DEBUG: Raw SMS payload string:', rawPayload);
+                    // console.log('DEBUG: Raw SMS payload string:', rawPayload);
                     
                     const smsPayload = JSON.parse(rawPayload);
-                    console.log('DEBUG: Parsed SMS Payload:', smsPayload);
-                    console.log('DEBUG: SMS Payload type:', typeof smsPayload);
-                    console.log('DEBUG: SMS Payload keys:', Object.keys(smsPayload));
+                    // console.log('DEBUG: Parsed SMS Payload:', smsPayload);
+                    // console.log('DEBUG: SMS Payload type:', typeof smsPayload);
+                    // console.log('DEBUG: SMS Payload keys:', Object.keys(smsPayload));
                     
                     // Try multiple possible structures to find otpDigit
                     let foundOtpDigit = null;
@@ -580,12 +562,12 @@
                     // Structure 1: smsPayload.sendOneTimePW.otpDigit
                     if (smsPayload && smsPayload.sendOneTimePW && smsPayload.sendOneTimePW.otpDigit) {
                         foundOtpDigit = smsPayload.sendOneTimePW.otpDigit;
-                        console.log('DEBUG: Found otpDigit in sendOneTimePW structure:', foundOtpDigit);
+                        // console.log('DEBUG: Found otpDigit in sendOneTimePW structure:', foundOtpDigit);
                     }
                     // Structure 2: smsPayload.otpDigit (direct)
                     else if (smsPayload && smsPayload.otpDigit) {
                         foundOtpDigit = smsPayload.otpDigit;
-                        console.log('DEBUG: Found otpDigit directly in payload:', foundOtpDigit);
+                        // console.log('DEBUG: Found otpDigit directly in payload:', foundOtpDigit);
                     }
                     // Structure 3: Search all nested objects for otpDigit
                     else {
@@ -594,10 +576,10 @@
                                 for (const key in obj) {
                                     if (obj.hasOwnProperty(key)) {
                                         const currentPath = path ? `${path}.${key}` : key;
-                                        console.log(`DEBUG: Checking path ${currentPath}:`, obj[key]);
+                                        // console.log(`DEBUG: Checking path ${currentPath}:`, obj[key]);
                                         
                                         if (key === 'otpDigit' && obj[key]) {
-                                            console.log(`DEBUG: Found otpDigit at path ${currentPath}:`, obj[key]);
+                                            // console.log(`DEBUG: Found otpDigit at path ${currentPath}:`, obj[key]);
                                             return obj[key];
                                         }
                                         
@@ -613,7 +595,7 @@
                         
                         foundOtpDigit = searchForOtpDigit(smsPayload);
                         if (foundOtpDigit) {
-                            console.log('DEBUG: Found otpDigit through deep search:', foundOtpDigit);
+                            // console.log('DEBUG: Found otpDigit through deep search:', foundOtpDigit);
                         }
                     }
                     
@@ -622,12 +604,12 @@
                         const parsedOtpLength = parseInt(foundOtpDigit);
                         if (!isNaN(parsedOtpLength) && parsedOtpLength > 0 && parsedOtpLength <= 8) {
                             expectedOtpLength = parsedOtpLength;
-                            console.log('DEBUG: Successfully set expectedOtpLength to:', expectedOtpLength);
+                            // console.log('DEBUG: Successfully set expectedOtpLength to:', expectedOtpLength);
                         } else {
-                            console.log('DEBUG: Invalid otpDigit value:', foundOtpDigit, 'keeping default:', expectedOtpLength);
+                            // console.log('DEBUG: Invalid otpDigit value:', foundOtpDigit, 'keeping default:', expectedOtpLength);
                         }
                     } else {
-                        console.log('DEBUG: otpDigit not found in payload, using default:', expectedOtpLength);
+                        // console.log('DEBUG: otpDigit not found in payload, using default:', expectedOtpLength);
                     }
                     
                     // Extract lifeTimeoutMins from payload structure (similar approach)
@@ -661,28 +643,28 @@
                         const parsedLifeTimeout = parseFloat(foundLifeTimeout);
                         if (!isNaN(parsedLifeTimeout) && parsedLifeTimeout > 0) {
                             lifeTimeoutMinutes = parsedLifeTimeout;
-                            console.log('DEBUG: Successfully set lifeTimeoutMinutes to:', lifeTimeoutMinutes);
+                            // console.log('DEBUG: Successfully set lifeTimeoutMinutes to:', lifeTimeoutMinutes);
                         }
                     }
                     
                 } catch (e) {
                     console.error('DEBUG: Error parsing SMS payload:', e);
-                    console.log('DEBUG: Raw payload value:', smsPayloadElement.value);
+                    // console.log('DEBUG: Raw payload value:', smsPayloadElement.value);
                     // Use default values if parsing fails
                 }
             } else {
-                console.log('DEBUG: No SMS payload element found or empty value');
+                // console.log('DEBUG: No SMS payload element found or empty value');
             }
             
             // Adjust OTP inputs based on expected length from SMS payload
             const activeOtpLength = Math.min(Math.max(expectedOtpLength, 1), 8); // Ensure between 1-8 digits
             
-            console.log('DEBUG: Final configuration:');
-            console.log('  - expectedOtpLength:', expectedOtpLength);
-            console.log('  - activeOtpLength:', activeOtpLength);
-            console.log('  - lifeTimeoutMinutes:', lifeTimeoutMinutes);
-            console.log('  - otpType:', otpType);
-            console.log('  - actualOtpSent:', actualOtpSent);
+            // console.log('DEBUG: Final configuration:');
+            // console.log('  - expectedOtpLength:', expectedOtpLength);
+            // console.log('  - activeOtpLength:', activeOtpLength);
+            // console.log('  - lifeTimeoutMinutes:', lifeTimeoutMinutes);
+            // console.log('  - otpType:', otpType);
+            // console.log('  - actualOtpSent:', actualOtpSent);
             
             // Show/hide OTP inputs based on required length
             otpInputs.forEach((input, index) => {
@@ -748,8 +730,8 @@
                             setTimeout(() => {
                                 const methodText = otpType === 'EMAIL' ? 'Email' : 'SMS';
                                 showOtpError(`รหัส ${methodText} OTP ไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง / Invalid ${methodText} OTP code. Please try again.`);
-                                console.log('DEBUG: Real-time OTP Mismatch - User:', currentOtp, 'Expected:', cleanActualOtp);
-                            }, 500); // Small delay to let user finish typing
+                                // console.log('DEBUG: Real-time OTP Mismatch - User:', currentOtp, 'Expected:', cleanActualOtp);
+                            }, 1500); // Small delay to let user finish typing
                         }
                     }
                 });
@@ -821,7 +803,7 @@
                         updateHiddenOtpInput();
                         
                         // Show success message for paste
-                        console.log('DEBUG: OTP pasted successfully:', pasteData);
+                        // console.log('DEBUG: OTP pasted successfully:', pasteData);
                     } else {
                         showOtpError(`กรุณาใส่รหัส OTP ให้ครบ ${activeOtpLength} หลัก / Please enter a complete ${activeOtpLength}-digit OTP code.`);
                     }
@@ -950,14 +932,14 @@
                             e.preventDefault();
                             const methodText = otpType === 'EMAIL' ? 'Email' : 'SMS';
                             showOtpError(`รหัส ${methodText} OTP ไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง / Invalid ${methodText} OTP code. Please try again.`);
-                            console.log('DEBUG: OTP Mismatch - User:', otpValue, 'Expected:', cleanActualOtp);
+                            // console.log('DEBUG: OTP Mismatch - User:', otpValue, 'Expected:', cleanActualOtp);
                             return;
                         }
                     }
 
                     // Let server handle OTP validation for final verification
-                    console.log('DEBUG: Submitting OTP for server validation:', otpValue);
-                    console.log('DEBUG: Expected OTP from server:', actualOtpSent);
+                    // console.log('DEBUG: Submitting OTP for server validation:', otpValue);
+                    // console.log('DEBUG: Expected OTP from server:', actualOtpSent);
 
                     // Show loading state
                     verifyBtn.textContent = 'Verifying...';
@@ -981,7 +963,7 @@
             // Use server-provided OTP sent time if available
             if (serverOtpSentTime) {
                 otpCreationTime = serverOtpSentTime;
-                console.log('DEBUG: Using server OTP sent time:', otpCreationTime);
+                // console.log('DEBUG: Using server OTP sent time:', otpCreationTime);
                 // Store in sessionStorage for consistency across refreshes
                 sessionStorage.setItem(otpCreationTimeKey, otpCreationTime.toString());
                 // Clear any expired flag since we have fresh server data
@@ -992,7 +974,7 @@
                 
                 if (expiredFlag === 'true') {
                     // OTP was previously marked as expired, keep it expired
-                    console.log('DEBUG: OTP was previously expired, maintaining expired state');
+                    // console.log('DEBUG: OTP was previously expired, maintaining expired state');
                     showOtpExpiredError();
                     return; // Don't continue with countdown
                 }
@@ -1002,12 +984,12 @@
                 
                 if (storedTime) {
                     otpCreationTime = parseInt(storedTime);
-                    console.log('DEBUG: Using stored OTP creation time:', otpCreationTime);
+                    // console.log('DEBUG: Using stored OTP creation time:', otpCreationTime);
                 } else {
                     // First time loading, use current time (fallback)
                     otpCreationTime = Date.now();
                     sessionStorage.setItem(otpCreationTimeKey, otpCreationTime.toString());
-                    console.log('DEBUG: No server time or stored time, using current time:', otpCreationTime);
+                    // console.log('DEBUG: No server time or stored time, using current time:', otpCreationTime);
                 }
             }
             
@@ -1015,9 +997,9 @@
             let actualLifetimeMinutes = lifeTimeoutMinutes; // Default from payload parsing
             if (serverTokenValidityMinutes && serverTokenValidityMinutes > 0) {
                 actualLifetimeMinutes = serverTokenValidityMinutes;
-                console.log('DEBUG: Using server token validity:', actualLifetimeMinutes, 'minutes');
+                // console.log('DEBUG: Using server token validity:', actualLifetimeMinutes, 'minutes');
             } else {
-                console.log('DEBUG: Using payload token validity:', actualLifetimeMinutes, 'minutes');
+                // console.log('DEBUG: Using payload token validity:', actualLifetimeMinutes, 'minutes');
             }
             
             // Calculate remaining time based on actual elapsed time
@@ -1027,13 +1009,13 @@
             let remainingTime = Math.max(0, otpLifetimeMs - elapsedTime);
             let countdown = Math.floor(remainingTime / 1000); // Convert to seconds
             
-            console.log('DEBUG: Countdown calculation:');
-            console.log('  - OTP creation time:', otpCreationTime, 'Date:', new Date(otpCreationTime));
-            console.log('  - Current time:', currentTime, 'Date:', new Date(currentTime));
-            console.log('  - Elapsed time (ms):', elapsedTime);
-            console.log('  - Lifetime (ms):', otpLifetimeMs);
-            console.log('  - Remaining time (ms):', remainingTime);
-            console.log('  - Countdown (seconds):', countdown);
+            // console.log('DEBUG: Countdown calculation:');
+            // console.log('  - OTP creation time:', otpCreationTime, 'Date:', new Date(otpCreationTime));
+            // console.log('  - Current time:', currentTime, 'Date:', new Date(currentTime));
+            // console.log('  - Elapsed time (ms):', elapsedTime);
+            // console.log('  - Lifetime (ms):', otpLifetimeMs);
+            // console.log('  - Remaining time (ms):', remainingTime);
+            // console.log('  - Countdown (seconds):', countdown);
             
             // Function to update label with remaining time
             function updateOtpLabel(seconds) {
@@ -1104,7 +1086,7 @@
                     hiddenOtpInput.value = '';
                 }
                 
-                console.log('DEBUG: OTP expired, form disabled, expired flag set');
+                // console.log('DEBUG: OTP expired, form disabled, expired flag set');
             }
 
             // Function to check if OTP is expired
@@ -1120,7 +1102,7 @@
             
             // Check if OTP is already expired when page loads
             if (countdown <= 0) {
-                console.log('DEBUG: OTP already expired on page load');
+                // console.log('DEBUG: OTP already expired on page load');
                 // Mark as expired in sessionStorage
                 sessionStorage.setItem(otpExpiredFlagKey, 'true');
                 showOtpExpiredError();
@@ -1133,7 +1115,7 @@
                     } else {
                         updateOtpLabel(0); // Update label to expired
                         clearInterval(timer);
-                        console.log('DEBUG: OTP expired during countdown');
+                        // console.log('DEBUG: OTP expired during countdown');
                         // Mark as expired in sessionStorage
                         sessionStorage.setItem(otpExpiredFlagKey, 'true');
                         // Show expired error

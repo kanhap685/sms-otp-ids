@@ -44,9 +44,9 @@ public class SMSOTPConstants {
     public static final String SMSOTP_AUTHENTICATION_ERROR_PAGE_URL = "SMSOTPAuthenticationEndpointErrorPage";
 
     public static final String LOGIN_PAGE = "authenticationendpoint/login.do";
-    public static final String SMS_LOGIN_PAGE = "smsotpauthenticationendpoint/smsotp.jsp";
+    public static final String SMS_LOGIN_PAGE = "smsotpauthenticationendpoint/otp-verification.jsp";
     public static final String RETRY_PARAMS = "&authFailure=true&authFailureMsg=authentication.fail.message";
-    public static final String ERROR_PAGE = "smsotpauthenticationendpoint/smsotperror.jsp";
+    public static final String ERROR_PAGE = "smsotpauthenticationendpoint/otp-error.jsp";
     public static final String MOBILE_NUMBER_REQ_PAGE = "smsotpauthenticationendpoint/mobile-number-request.jsp";
     public static final String MOBILE_NUMBER = "MOBILE_NUMBER";
 

@@ -18,6 +18,8 @@
 <%@ page language="java" session="true" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" %>
 <%@ page import="java.net.URLDecoder" %>
 <%@ page import="java.nio.charset.StandardCharsets" %>
+<%@ page import="org.wso2.carbon.identity.application.authentication.framework.context.AuthenticationContext" %>
+<%@ page import="org.wso2.carbon.identity.application.authentication.framework.util.FrameworkUtils" %>
 
 <%
     // Set response encoding to UTF-8
@@ -31,8 +33,48 @@
     String errorInfo = request.getParameter("errorInfo");
     String returnUrl = request.getParameter("returnUrl");
     
+    // Try to get more specific error information from AuthenticationContext
+    String otpType = "SMS"; // Default
+    String contactMethod = "mobile number"; // Default
+    String specificErrorMsg = null;
+    
+    try {
+        if (sessionDataKey != null) {
+            AuthenticationContext authContext = FrameworkUtils.getAuthenticationContextFromCache(sessionDataKey);
+            if (authContext != null) {
+                // Get OTP type (SMS or EMAIL)
+                String contextOtpType = (String) authContext.getProperty("OTP_TYPE");
+                if ("EMAIL".equals(contextOtpType)) {
+                    otpType = "EMAIL";
+                    contactMethod = "email address";
+                }
+                
+                // Get specific error message from context
+                Object contextErrorCode = authContext.getProperty("ERROR_CODE");
+                if (contextErrorCode != null) {
+                    specificErrorMsg = contextErrorCode.toString();
+                }
+                
+                // Get auth failure message from context
+                Object contextAuthFailureMsg = authContext.getProperty("AUTH_FAILURE_MSG");
+                if (contextAuthFailureMsg != null && specificErrorMsg == null) {
+                    specificErrorMsg = contextAuthFailureMsg.toString();
+                }
+            }
+        }
+    } catch (Exception e) {
+        System.err.println("Error getting context information: " + e.getMessage());
+    }
+    
+    // Use specific error message if available, otherwise use parameter
+    if (specificErrorMsg != null && !specificErrorMsg.isEmpty()) {
+        errorMessage = specificErrorMsg;
+    }
+    
     if (sessionDataKey == null) sessionDataKey = "";
-    if (errorMessage == null) errorMessage = "Authentication failed. Please try again.";
+    if (errorMessage == null || errorMessage.isEmpty()) {
+        errorMessage = "Authentication failed. Please try again.";
+    }
     if (errorCode == null) errorCode = "";
     if (errorInfo == null) errorInfo = "";
     if (returnUrl == null) returnUrl = "";
@@ -62,7 +104,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SMS OTP Authentication Error</title>
+    <title><%= otpType %> OTP Authentication Error</title>
     
     <link rel="icon" href="images/favicon.png" type="image/x-icon"/>
     <link href="libs/bootstrap_3.3.5/css/bootstrap.min.css" rel="stylesheet">
@@ -144,10 +186,15 @@
 </head>
 <body>
     <div class="error-container">
-        <div class="error-icon">⚠️</div>
+        <div class="error-icon">
+            <%= "EMAIL".equals(otpType) ? "📧❌" : "📱❌" %>
+        </div>
         
         <div class="error-header">
-            <h2>Authentication Error</h2>
+            <h2><%= otpType %> OTP Authentication Error</h2>
+            <p style="color: #666; font-size: 14px; margin-top: 10px;">
+                There was an issue with your <%= otpType.toLowerCase() %> OTP verification
+            </p>
         </div>
         
         <div class="error-message">
@@ -165,6 +212,12 @@
             <strong>Details:</strong> <%= errorInfo %>
         </div>
         <% } %>
+        
+        <!-- Additional information about OTP type -->
+        <div class="otp-info" style="margin-top: 20px; padding: 15px; background: rgba(102, 126, 234, 0.1); border-radius: 8px; font-size: 14px;">
+            <strong>Note:</strong> This error occurred during <%= otpType %> OTP verification. 
+            Please ensure you have access to your registered <%= contactMethod %> and try again.
+        </div>
         
         <form>
             <input type="hidden" name="sessionDataKey" value="<%= sessionDataKey %>" />

@@ -3,9 +3,9 @@ package org.wso2.carbon.identity.custom.federated.authenticator.email;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.wso2.carbon.identity.application.authentication.framework.config.ConfigurationFacade;
 import org.wso2.carbon.identity.application.authentication.framework.context.AuthenticationContext;
 import org.wso2.carbon.identity.application.authentication.framework.exception.AuthenticationFailedException;
+import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
 import org.wso2.carbon.identity.custom.federated.authenticator.email.service.EmailService;
 import org.wso2.carbon.identity.custom.federated.authenticator.email.service.EmailService.EmailConfig;
 import org.wso2.carbon.identity.custom.federated.authenticator.email.service.EmailService.EmailResponse;
@@ -15,6 +15,7 @@ import org.wso2.carbon.identity.custom.federated.authenticator.sms.service.Valid
 import org.wso2.carbon.identity.custom.federated.authenticator.sms.service.ValidationService.ValidationResult;
 import org.wso2.carbon.identity.custom.federated.authenticator.sms.SMSOTPConstants;
 import org.wso2.carbon.identity.custom.federated.authenticator.sms.SMSOTPUtils;
+import org.wso2.carbon.identity.custom.federated.authenticator.CustomFederatedAuthenticator;
 import org.wso2.carbon.user.api.UserRealm;
 import org.wso2.carbon.user.core.UserStoreException;
 import org.wso2.carbon.utils.multitenancy.MultitenantUtils;
@@ -23,7 +24,6 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.Serializable;
-import java.util.Map;
 
 /**
  * Email OTP Authenticator for handling email-based OTP authentication
@@ -49,6 +49,9 @@ public class EmailOTPAuthenticator implements Serializable {
     public void handleEmailOTPAuthentication(HttpServletRequest request, HttpServletResponse response,
                                            AuthenticationContext context) throws AuthenticationFailedException {
         
+        // Clean up any existing session data to prevent conflicts
+        cleanupSessionData(context);
+        
         if (log.isDebugEnabled()) {
             log.debug("Starting Email OTP authentication for session: " + context.getContextIdentifier());
         }
@@ -57,6 +60,23 @@ public class EmailOTPAuthenticator implements Serializable {
             String username = extractUsername(context);
             String tenantDomain = context.getTenantDomain();
             String queryParams = request.getQueryString();
+
+            // Create and store AuthenticatedUser in context for validation
+            AuthenticatedUser authenticatedUser = null;
+            if (context.getSequenceConfig() != null && 
+                context.getSequenceConfig().getAuthenticatedUser() != null) {
+                authenticatedUser = context.getSequenceConfig().getAuthenticatedUser();
+            } else if (context.getLastAuthenticatedUser() != null) {
+                authenticatedUser = context.getLastAuthenticatedUser();
+            } else {
+                // Create new AuthenticatedUser if not found
+                authenticatedUser = AuthenticatedUser.createLocalAuthenticatedUserFromSubjectIdentifier(username);
+                authenticatedUser.setTenantDomain(tenantDomain);
+            }
+            
+            // Store authenticated user in context for later validation
+            context.setProperty(SMSOTPConstants.AUTHENTICATED_USER, authenticatedUser);
+            log.info("Set AuthenticatedUser in context for EMAIL OTP: " + authenticatedUser.getUserName());
 
             // Get user email address
             String emailAddress = getUserEmailAddress(request, response, context, username, tenantDomain, queryParams);
@@ -86,34 +106,62 @@ public class EmailOTPAuthenticator implements Serializable {
         try {
             String userToken = request.getParameter(SMSOTPConstants.CODE);
             
-            // Validate user input
-            ValidationResult inputValidation = validationService.validateOTPFormat(userToken, 4);
-            if (!inputValidation.isValid()) {
-                handleOTPValidationFailure(response, context, inputValidation.getMessage());
+            // Check if we have user input
+            if (StringUtils.isEmpty(userToken)) {
+                String errorMessage = "Please enter the OTP code sent to your email.";
+                handleOTPValidationFailure(response, context, errorMessage);
                 return;
             }
 
-            // Get stored OTP from context
+            // Get stored OTP information from context
             String contextToken = (String) context.getProperty(SMSOTPConstants.OTP_TOKEN);
+            String actualOtpSent = (String) context.getProperty("CLIENT_OTP_VALIDATION");
             Long sentTime = (Long) context.getProperty(SMSOTPConstants.SENT_OTP_TOKEN_TIME);
+            Long validityPeriod = (Long) context.getProperty(SMSOTPConstants.TOKEN_VALIDITY_TIME);
             
-            // Validate OTP
-            OTPValidationResult otpValidation = otpService.validateOTP(
-                userToken, contextToken, sentTime, 5L // 5 minutes validity
-            );
+            log.info("Email OTP Validation Debug:");
+            log.info("  - User OTP from request: '" + userToken + "'");
+            log.info("  - Stored OTP in context: '" + contextToken + "'");
+            log.info("  - Actual OTP sent: '" + actualOtpSent + "'");
+            log.info("  - User OTP length: " + (userToken != null ? userToken.length() : "null"));
+            log.info("  - Stored OTP length: " + (contextToken != null ? contextToken.length() : "null"));
+            
+            // Get authenticated user
+            AuthenticatedUser authenticatedUser = (AuthenticatedUser) context.getProperty(SMSOTPConstants.AUTHENTICATED_USER);
+            if (authenticatedUser == null) {
+                log.error("Email OTP Validation Error: AuthenticatedUser is null in context");
+                String errorMessage = "Authentication session expired. Please try again.";
+                handleOTPValidationFailure(response, context, errorMessage);
+                return;
+            }
+            
+            // Validate OTP using OTPService
+            OTPValidationResult validationResult = otpService.validateOTP(userToken, contextToken, sentTime, validityPeriod);
+            
+            log.info("Email OTP Validation Result:");
+            log.info("  - Is Valid: " + validationResult.isValid());
+            log.info("  - Message: " + validationResult.getMessage());
+            
+            if (!validationResult.isValid()) {
+                log.warn("Email OTP Validation Failed: " + validationResult.getMessage());
+                handleOTPValidationFailure(response, context, validationResult.getMessage());
+                return;
+            }
 
-            if (otpValidation.isValid()) {
-                if (log.isDebugEnabled()) {
-                    log.debug("Email OTP validation successful for session: " + context.getContextIdentifier());
-                }
-                context.setSubject(context.getSequenceConfig().getAuthenticatedUser());
-            } else {
-                handleOTPValidationFailure(response, context, otpValidation.getMessage());
+            // OTP validation successful
+            log.info("Email OTP Validation Successful for user: " + authenticatedUser.getUserName());
+            
+            // Set authenticated user as subject
+            context.setSubject(authenticatedUser);
+            
+            if (log.isDebugEnabled()) {
+                log.debug("Email OTP authentication completed successfully for session: " + context.getContextIdentifier());
             }
 
         } catch (Exception e) {
             log.error("Error processing Email OTP response: " + e.getMessage(), e);
-            throw new AuthenticationFailedException("Error processing Email OTP response", e);
+            String errorMessage = "Technical error occurred during Email OTP verification. Please try again.";
+            throw new AuthenticationFailedException(errorMessage, e);
         }
     }
 
@@ -169,7 +217,7 @@ public class EmailOTPAuthenticator implements Serializable {
             
             if (StringUtils.isEmpty(emailAddress)) {
                 String errorMessage = "Email address not found for user: " + username + 
-                                    ". Please contact administrator to update your email address.";
+                                    ". Please contact your administrator to update your email address in your profile.";
                 redirectToErrorPage(response, context, queryParams, errorMessage);
                 return null;
             }
@@ -177,7 +225,9 @@ public class EmailOTPAuthenticator implements Serializable {
             // Validate email format
             ValidationResult emailValidation = validationService.validateEmailAddress(emailAddress);
             if (!emailValidation.isValid()) {
-                redirectToErrorPage(response, context, queryParams, emailValidation.getMessage());
+                String errorMessage = "Invalid email address format: " + emailValidation.getMessage() + 
+                                    ". Please contact your administrator to correct your email address.";
+                redirectToErrorPage(response, context, queryParams, errorMessage);
                 return null;
             }
             
@@ -196,11 +246,8 @@ public class EmailOTPAuthenticator implements Serializable {
                             String queryParams, String username) throws AuthenticationFailedException {
         
         try {
-            // Generate OTP
-            String otpCode = otpService.generateOTP(context);
-            
-            // Create Email configuration
-            Map<String, String> authenticatorProperties = context.getAuthenticatorProperties();
+            // Create Email configuration first to get payload information
+            java.util.Map<String, String> authenticatorProperties = context.getAuthenticatorProperties();
             EmailConfig emailConfig = new EmailConfig(
                     authenticatorProperties.get("EMAIL_URL"),
                     authenticatorProperties.get("EMAIL_HTTP_METHOD"),
@@ -208,6 +255,15 @@ public class EmailOTPAuthenticator implements Serializable {
                     authenticatorProperties.get("EMAIL_PAYLOAD"),
                     authenticatorProperties.get("EMAIL_HTTP_RESPONSE")
             );
+            
+            // Store Email payload in context so OTP service can read the otpDigit configuration
+            if (emailConfig.getPayload() != null && !emailConfig.getPayload().trim().isEmpty()) {
+                context.setProperty("EMAIL_PAYLOAD_CONFIG", emailConfig.getPayload());
+                log.info("Set EMAIL payload in context for OTP generation: " + emailConfig.getPayload());
+            }
+            
+            // Generate OTP (now it can read otpDigit from the payload)
+            String otpCode = otpService.generateOTP(context);
             
             // Send Email
             EmailResponse emailResponse = emailService.sendOTP(context, emailAddress, otpCode, emailConfig);
@@ -226,24 +282,42 @@ public class EmailOTPAuthenticator implements Serializable {
                 }
                 otpService.storeOTPInContext(context, otpCode, actualOtpSent);
                 
-                // Store Email payload for JSP
+                // Store Email payload for JSP (use same property name as SMS for compatibility)
                 if (StringUtils.isNotEmpty(emailConfig.getPayload())) {
-                    context.setProperty("EMAIL_PAYLOAD_CONFIG", emailConfig.getPayload());
+                    context.setProperty("SMS_PAYLOAD_CONFIG", emailConfig.getPayload()); // Use SMS property for compatibility
+                    context.setProperty("EMAIL_PAYLOAD_CONFIG", emailConfig.getPayload()); // Keep EMAIL property as well
                 }
+                
+                // Mark this as EMAIL OTP for context
+                context.setProperty("OTP_TYPE", "EMAIL");
+                
+                // Store additional context properties that JSP might need
+                context.setProperty("SCREEN_VALUE", maskEmailAddress(emailAddress));
+                context.setProperty("MOBILE_NUMBER", emailAddress); // Store actual email for reference
+                context.setProperty("OTP_CHANNEL", "EMAIL"); // Indicate this is email channel
+                
+                // Store email configuration for potential resend operations
+                context.setProperty("EMAIL_URL", emailConfig.getUrl());
+                context.setProperty("EMAIL_METHOD", emailConfig.getHttpMethod());
+                context.setProperty("EMAIL_HEADERS", emailConfig.getHeaders());
+                context.setProperty("EMAIL_PAYLOAD", emailConfig.getPayload());
+                context.setProperty("EMAIL_HTTP_RESPONSE", emailConfig.getExpectedResponse());
                 
                 // Redirect to OTP input page
                 redirectToOTPPage(response, context, queryParams, username, emailAddress);
                 
             } else {
                 // Email sending failed
-                String errorMessage = "Failed to send Email OTP: " + emailResponse.getMessage();
+                String errorMessage = "Failed to send Email OTP: " + emailResponse.getMessage() + 
+                                    ". Please check your email configuration or try again later.";
                 context.setProperty(SMSOTPConstants.ERROR_CODE, errorMessage);
                 redirectToErrorPage(response, context, queryParams, errorMessage);
             }
             
         } catch (IOException e) {
             log.error("Error sending Email OTP: " + e.getMessage(), e);
-            redirectToErrorPage(response, context, queryParams, "Error sending Email. Please try again.");
+            String errorMessage = "Unable to send Email OTP due to technical issues. Please try again later or contact support.";
+            redirectToErrorPage(response, context, queryParams, errorMessage);
         }
     }
 
@@ -255,19 +329,21 @@ public class EmailOTPAuthenticator implements Serializable {
         
         try {
             context.setProperty(SMSOTPConstants.ERROR_CODE, errorMessage);
-            String errorPageUrl = ConfigurationFacade.getInstance().getAuthenticationEndpointURL()
-                    .replace("authenticationendpoint/login.do", "authenticationendpoint/emailOtpError.jsp");
             
+            // Set additional error context for EMAIL OTP
+            context.setProperty("AUTH_FAILURE_MSG", errorMessage);
+            context.setProperty("ERROR_TYPE", "EMAIL_OTP_VALIDATION");
+            context.setProperty("OTP_CHANNEL", "EMAIL");
+            
+            String errorPage = CustomFederatedAuthenticator.getErrorPage(context);
             String queryString = context.getContextIdIncludedQueryParams();
-            if (StringUtils.isNotBlank(queryString)) {
-                errorPageUrl += "?" + queryString;
-            }
+            String url = CustomFederatedAuthenticator.getURL(errorPage, queryString, "CustomFederatedAuthenticator");
             
             if (log.isDebugEnabled()) {
-                log.debug("Redirecting to error page: " + errorPageUrl);
+                log.debug("Redirecting to error page: " + url);
             }
             
-            response.sendRedirect(errorPageUrl);
+            response.sendRedirect(url);
             
         } catch (IOException e) {
             log.error("Error redirecting to error page: " + e.getMessage(), e);
@@ -283,22 +359,48 @@ public class EmailOTPAuthenticator implements Serializable {
                                  throws AuthenticationFailedException {
         
         try {
-            String otpPageUrl = ConfigurationFacade.getInstance().getAuthenticationEndpointURL()
-                    .replace("authenticationendpoint/login.do", "authenticationendpoint/emailOtp.jsp");
+            String loginPage = CustomFederatedAuthenticator.getLoginPage(context);
+            // Use context query params to ensure proper authentication context handling
+            String contextQueryParams = context.getContextIdIncludedQueryParams();
+            String url = CustomFederatedAuthenticator.getURL(loginPage, contextQueryParams, "CustomFederatedAuthenticator");
             
-            String queryString = context.getContextIdIncludedQueryParams();
-            if (StringUtils.isNotBlank(queryString)) {
-                otpPageUrl += "?" + queryString;
+            // Add screen value if available (use email instead of mobile for EMAIL OTP)
+            if (StringUtils.isNotEmpty(username)) {
+                try {
+                    String tenantDomain = MultitenantUtils.getTenantDomain(username);
+                    UserRealm userRealm = (UserRealm) SMSOTPUtils.getUserRealm(tenantDomain);
+                    
+                    if (userRealm != null) {
+                        // For EMAIL OTP, use the masked email as screen value
+                        String screenValue = maskEmailAddress(emailAddress);
+                        if (screenValue != null) {
+                            url = url + SMSOTPConstants.SCREEN_VALUE + screenValue;
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("Error getting screen value for user: " + username, e);
+                }
             }
             
-            // Add email address to context for display
+            // Add email address to context for display (use same properties as SMS for compatibility)
             context.setProperty("MASKED_EMAIL", maskEmailAddress(emailAddress));
+            context.setProperty("screenValue", maskEmailAddress(emailAddress)); // For JSP compatibility
+            context.setProperty("SCREEN_VALUE", maskEmailAddress(emailAddress)); // Alternative property name
+            
+            // Set additional properties for EMAIL OTP display
+            context.setProperty("OTP_TYPE_DISPLAY", "EMAIL"); // For UI display purposes
+            context.setProperty("CONTACT_METHOD", "email address"); // Human readable contact method
+            context.setProperty("MASKED_CONTACT", maskEmailAddress(emailAddress)); // Masked contact info
+            
+            // For compatibility with existing SMS JSP logic
+            context.setProperty("MOBILE_NUMBER_MASKED", maskEmailAddress(emailAddress));
+            context.setProperty("CONTACT_VALUE", emailAddress); // Full contact value (for internal use)
             
             if (log.isDebugEnabled()) {
-                log.debug("Redirecting to Email OTP page: " + otpPageUrl);
+                log.debug("Redirecting to SMS OTP page: " + url + " for EMAIL OTP");
             }
             
-            response.sendRedirect(otpPageUrl);
+            response.sendRedirect(url);
             
         } catch (IOException e) {
             log.error("Error redirecting to OTP page: " + e.getMessage(), e);
@@ -314,19 +416,16 @@ public class EmailOTPAuthenticator implements Serializable {
         
         try {
             context.setProperty(SMSOTPConstants.ERROR_CODE, errorMessage);
-            String errorPageUrl = ConfigurationFacade.getInstance().getAuthenticationEndpointURL()
-                    .replace("authenticationendpoint/login.do", "authenticationendpoint/emailOtpError.jsp");
-            
-            String queryString = context.getContextIdIncludedQueryParams();
-            if (StringUtils.isNotBlank(queryString)) {
-                errorPageUrl += "?" + queryString;
-            }
+            String errorPage = CustomFederatedAuthenticator.getErrorPage(context);
+            // Use context query params to ensure proper authentication context handling
+            String contextQueryParams = context.getContextIdIncludedQueryParams();
+            String url = CustomFederatedAuthenticator.getURL(errorPage, contextQueryParams, "CustomFederatedAuthenticator");
             
             if (log.isDebugEnabled()) {
-                log.debug("Redirecting to error page: " + errorPageUrl + " with error: " + errorMessage);
+                log.debug("Redirecting to error page: " + url + " with error: " + errorMessage);
             }
             
-            response.sendRedirect(errorPageUrl);
+            response.sendRedirect(url);
             
         } catch (IOException e) {
             log.error("Error redirecting to error page: " + e.getMessage(), e);
@@ -352,5 +451,48 @@ public class EmailOTPAuthenticator implements Serializable {
         
         String maskedLocal = localPart.charAt(0) + "***";
         return maskedLocal + "@" + domain;
+    }
+
+    /**
+     * Cleans up existing session data to prevent constraint violations
+     * 
+     * @param context Authentication context
+     */
+    private void cleanupSessionData(AuthenticationContext context) {
+        try {
+            if (context != null) {
+                // Remove any existing OTP-related properties that might cause conflicts
+                String[] propertiesToClean = {
+                    SMSOTPConstants.OTP_TOKEN,
+                    SMSOTPConstants.SENT_OTP_TOKEN_TIME,
+                    SMSOTPConstants.TOKEN_VALIDITY_TIME,
+                    "CLIENT_OTP_VALIDATION",
+                    "EMAIL_PAYLOAD_CONFIG",
+                    "SMS_PAYLOAD_CONFIG",
+                    "screenValue",
+                    "MASKED_EMAIL",
+                    "OTP_TYPE"
+                };
+                
+                for (String property : propertiesToClean) {
+                    if (context.getProperty(property) != null) {
+                        context.removeProperty(property);
+                        if (log.isDebugEnabled()) {
+                            log.debug("Cleaned up email session property: " + property);
+                        }
+                    }
+                }
+                
+                // Add a small delay to ensure any pending session operations complete
+                Thread.sleep(50);
+                
+                if (log.isDebugEnabled()) {
+                    log.debug("Email session cleanup completed for context: " + context.getContextIdentifier());
+                }
+            }
+        } catch (Exception e) {
+            // Log but don't fail the authentication process due to cleanup issues
+            log.warn("Warning during email session cleanup: " + e.getMessage());
+        }
     }
 }

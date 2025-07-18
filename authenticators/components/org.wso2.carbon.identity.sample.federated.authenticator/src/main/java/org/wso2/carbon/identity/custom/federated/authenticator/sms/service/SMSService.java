@@ -1,5 +1,6 @@
 package org.wso2.carbon.identity.custom.federated.authenticator.sms.service;
 
+import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.wso2.carbon.identity.application.authentication.framework.context.AuthenticationContext;
@@ -37,6 +38,13 @@ public class SMSService {
         if (log.isDebugEnabled()) {
             log.debug("Sending OTP to mobile: " + mobileNumber + " with OTP length: " + otpCode.length());
         }
+
+        if(StringUtils.isNotEmpty(mobileNumber)){
+            String maskedMobile = maskMobileNumber(mobileNumber);
+            context.setProperty("MASKED_MOBILE", maskedMobile);
+        }
+
+        
 
         String encodedMobileNumber = URLEncoder.encode(mobileNumber, "UTF-8");
         String finalSmsUrl = buildSmsUrl(smsConfig.getSmsUrl(), encodedMobileNumber, otpCode);
@@ -255,6 +263,54 @@ public class SMSService {
             log.warn("Failed to extract OTP from response: " + e.getMessage());
         }
         return null;
+    }
+
+    /**
+     * Masks the mobile number for display purposes
+     * Shows only the last few digits, masking the rest with asterisks
+     * 
+     * @param mobileNumber The original mobile number
+     * @return Masked mobile number (e.g., +***-***-1234)
+     */
+    private String maskMobileNumber(String mobileNumber) {
+        if (mobileNumber == null || mobileNumber.trim().isEmpty()) {
+            return "";
+        }
+        
+        String cleanNumber = mobileNumber.replaceAll("[^0-9+]", "");
+        
+        if (cleanNumber.length() <= 4) {
+            // If number is too short, mask all but last digit
+            return repeatString("*", cleanNumber.length() - 1) + cleanNumber.substring(cleanNumber.length() - 1);
+        }
+        
+        // For longer numbers, show first character (if +) and last 4 digits
+        if (cleanNumber.startsWith("+")) {
+            if (cleanNumber.length() <= 8) {
+                return "+" + repeatString("*", cleanNumber.length() - 5) + cleanNumber.substring(cleanNumber.length() - 4);
+            } else {
+                return "+" + "***-***-" + cleanNumber.substring(cleanNumber.length() - 4);
+            }
+        } else {
+            // For numbers without +, mask all but last 4 digits
+            if (cleanNumber.length() <= 8) {
+                return repeatString("*", cleanNumber.length() - 4) + cleanNumber.substring(cleanNumber.length() - 4);
+            } else {
+                return "***-***-" + cleanNumber.substring(cleanNumber.length() - 4);
+            }
+        }
+    }
+
+    /**
+     * Helper method to repeat a string n times (for Java compatibility)
+     */
+    private String repeatString(String str, int times) {
+        if (times <= 0) return "";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < times; i++) {
+            sb.append(str);
+        }
+        return sb.toString();
     }
 
     /**

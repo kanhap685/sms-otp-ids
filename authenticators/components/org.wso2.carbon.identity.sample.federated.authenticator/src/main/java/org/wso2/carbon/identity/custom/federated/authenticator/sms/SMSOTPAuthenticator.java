@@ -145,6 +145,9 @@ public class SMSOTPAuthenticator implements Serializable {
     public void handleSMSOTPAuthentication(HttpServletRequest request, HttpServletResponse response,
                                          AuthenticationContext context) throws AuthenticationFailedException {
         
+        // Clean up any existing session data to prevent conflicts
+        cleanupSessionData(context);
+        
         // Validate context
         ValidationService.ValidationResult contextValidation = validationService.validateAuthenticationContext(context);
         if (!contextValidation.isValid()) {
@@ -196,15 +199,52 @@ public class SMSOTPAuthenticator implements Serializable {
             log.debug("Processing SMS OTP authentication response");
         }
 
+        // Add synchronization to prevent concurrent session conflicts
+        synchronized (this) {
+            try {
+                processOTPValidation(request, response, context);
+            } catch (Exception e) {
+                if (e.getMessage() != null && e.getMessage().contains("Unique index or primary key violation")) {
+                    log.warn("Session conflict detected, retrying after cleanup: " + e.getMessage());
+                    // Clean up and retry once
+                    cleanupSessionData(context);
+                    try {
+                        Thread.sleep(100); // Brief delay
+                        processOTPValidation(request, response, context);
+                    } catch (Exception retryE) {
+                        log.error("Retry failed after session cleanup: " + retryE.getMessage(), retryE);
+                        throw new AuthenticationFailedException("Authentication failed due to session conflict", retryE);
+                    }
+                } else {
+                    throw e;
+                }
+            }
+        }
+    }
+
+    /**
+     * Internal OTP validation processing
+     */
+    private void processOTPValidation(HttpServletRequest request, HttpServletResponse response,
+                                    AuthenticationContext context) throws AuthenticationFailedException {
+
         String queryParams = buildQueryParams(context);
         
         // Extract OTP from request
         String userOTP = extractOTPFromRequest(request);
         String storedOTP = (String) context.getProperty(SMSOTPConstants.OTP_TOKEN);
         
+        // Enhanced logging for debugging
+        log.info("SMS OTP Validation Debug:");
+        log.info("  - User OTP from request: '" + userOTP + "'");
+        log.info("  - Stored OTP in context: '" + storedOTP + "'");
+        log.info("  - User OTP length: " + (userOTP != null ? userOTP.length() : "null"));
+        log.info("  - Stored OTP length: " + (storedOTP != null ? storedOTP.length() : "null"));
+        
         // Get authenticated user
         AuthenticatedUser authenticatedUser = (AuthenticatedUser) context.getProperty(SMSOTPConstants.AUTHENTICATED_USER);
         if (authenticatedUser == null) {
+            log.error("SMS OTP Validation Error: AuthenticatedUser is null in context");
             redirectToErrorPage(response, context, queryParams, "Authentication session expired. Please try again.");
             return;
         }
@@ -213,14 +253,24 @@ public class SMSOTPAuthenticator implements Serializable {
         Long sentTime = (Long) context.getProperty(SMSOTPConstants.SENT_OTP_TOKEN_TIME);
         Long validityPeriod = (Long) context.getProperty(SMSOTPConstants.TOKEN_VALIDITY_TIME);
         
+        log.info("SMS OTP Context Properties:");
+        log.info("  - Sent Time: " + sentTime);
+        log.info("  - Validity Period: " + validityPeriod);
+        
         OTPService.OTPValidationResult validationResult = otpService.validateOTP(userOTP, storedOTP, sentTime, validityPeriod);
         
+        log.info("SMS OTP Validation Result:");
+        log.info("  - Is Valid: " + validationResult.isValid());
+        log.info("  - Message: " + validationResult.getMessage());
+        
         if (!validationResult.isValid()) {
+            log.warn("SMS OTP Validation Failed: " + validationResult.getMessage());
             redirectToErrorPage(response, context, queryParams, validationResult.getMessage());
             return;
         }
         
         // OTP validation successful
+        log.info("SMS OTP Validation Successful for user: " + authenticatedUser.getUserName());
         handleSuccessfulAuthentication(context, authenticatedUser);
     }
 
@@ -378,10 +428,7 @@ public class SMSOTPAuthenticator implements Serializable {
                            String queryParams, String username) throws AuthenticationFailedException {
         
         try {
-            // Generate OTP
-            String otpCode = otpService.generateOTP(context);
-            
-            // Create SMS configuration
+            // Create SMS configuration first to get payload information
             Map<String, String> authenticatorProperties = context.getAuthenticatorProperties();
             SMSService.SMSConfig smsConfig = new SMSService.SMSConfig(
                     authenticatorProperties.get(SMSOTPConstants.SMS_URL),
@@ -390,6 +437,15 @@ public class SMSOTPAuthenticator implements Serializable {
                     authenticatorProperties.get(SMSOTPConstants.PAYLOAD),
                     authenticatorProperties.get(SMSOTPConstants.HTTP_RESPONSE)
             );
+            
+            // Store SMS payload in context so OTP service can read the otpDigit configuration
+            if (StringUtils.isNotEmpty(smsConfig.getPayload())) {
+                context.setProperty("SMS_PAYLOAD_CONFIG", smsConfig.getPayload());
+                log.info("Set SMS payload in context for OTP generation: " + smsConfig.getPayload());
+            }
+            
+            // Generate OTP (now it can read otpDigit from the payload)
+            String otpCode = otpService.generateOTP(context);
             
             // Send SMS
             SMSResponse smsResponse = smsService.sendOTP(context, mobileNumber, otpCode, smsConfig);
@@ -409,10 +465,8 @@ public class SMSOTPAuthenticator implements Serializable {
                 }
                 otpService.storeOTPInContext(context, otpCode, actualOtpSent);
                 
-                // Store SMS payload for JSP
-                if (StringUtils.isNotEmpty(smsConfig.getPayload())) {
-                    context.setProperty("SMS_PAYLOAD_CONFIG", smsConfig.getPayload());
-                }
+                // SMS payload already set in context before OTP generation
+                // No need to set again here
                 
                 // Redirect to OTP input page
                 redirectToOTPPage(response, context, queryParams, username);
@@ -577,5 +631,47 @@ public class SMSOTPAuthenticator implements Serializable {
         }
         
         return null;
+    }
+
+    /**
+     * Cleans up existing session data to prevent constraint violations
+     * 
+     * @param context Authentication context
+     */
+    private void cleanupSessionData(AuthenticationContext context) {
+        try {
+            if (context != null) {
+                // Remove any existing OTP-related properties that might cause conflicts
+                String[] propertiesToClean = {
+                    SMSOTPConstants.OTP_TOKEN,
+                    SMSOTPConstants.SENT_OTP_TOKEN_TIME,
+                    SMSOTPConstants.TOKEN_VALIDITY_TIME,
+                    "CLIENT_OTP_VALIDATION",
+                    "SMS_PAYLOAD_CONFIG",
+                    "screenValue",
+                    "MASKED_EMAIL",
+                    "OTP_TYPE"
+                };
+                
+                for (String property : propertiesToClean) {
+                    if (context.getProperty(property) != null) {
+                        context.removeProperty(property);
+                        if (log.isDebugEnabled()) {
+                            log.debug("Cleaned up session property: " + property);
+                        }
+                    }
+                }
+                
+                // Add a small delay to ensure any pending session operations complete
+                Thread.sleep(50);
+                
+                if (log.isDebugEnabled()) {
+                    log.debug("Session cleanup completed for context: " + context.getContextIdentifier());
+                }
+            }
+        } catch (Exception e) {
+            // Log but don't fail the authentication process due to cleanup issues
+            log.warn("Warning during session cleanup: " + e.getMessage());
+        }
     }
 }

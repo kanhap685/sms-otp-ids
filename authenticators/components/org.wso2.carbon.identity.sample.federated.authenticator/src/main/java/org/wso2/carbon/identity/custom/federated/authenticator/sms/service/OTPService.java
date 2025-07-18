@@ -22,8 +22,8 @@ public class OTPService {
      * @return Generated OTP token
      */
     public String generateOTP(AuthenticationContext context) {
-        // Always use 4-digit OTP as per requirement
-        int tokenLength = 4;
+        // Get OTP length from configuration, default to 4 if not specified
+        int tokenLength = getOTPLengthFromContext(context);
         boolean isAlphanumeric = SMSOTPUtils.isEnableAlphanumericToken(context);
         
         if (log.isDebugEnabled()) {
@@ -66,19 +66,20 @@ public class OTPService {
     public OTPValidationResult validateOTP(String userToken, String contextToken, 
                                          Long sentTime, Long validityPeriod) {
         
-        if (log.isDebugEnabled()) {
-            log.debug("Validating OTP - User token length: " + 
-                     (userToken != null ? userToken.length() : "null") +
-                     ", Context token length: " + 
-                     (contextToken != null ? contextToken.length() : "null"));
-        }
+        log.info("OTP Validation Started:");
+        log.info("  - User token: '" + userToken + "' (length: " + (userToken != null ? userToken.length() : "null") + ")");
+        log.info("  - Context token: '" + contextToken + "' (length: " + (contextToken != null ? contextToken.length() : "null") + ")");
+        log.info("  - Sent time: " + sentTime);
+        log.info("  - Validity period: " + validityPeriod);
         
         // Check if tokens are provided
         if (userToken == null || userToken.trim().isEmpty()) {
+            log.warn("OTP Validation Failed: User token is null or empty");
             return new OTPValidationResult(false, "Please enter the OTP code.");
         }
         
         if (contextToken == null || contextToken.trim().isEmpty()) {
+            log.warn("OTP Validation Failed: Context token is null or empty");
             return new OTPValidationResult(false, "OTP session expired. Please try again.");
         }
         
@@ -86,11 +87,15 @@ public class OTPService {
         userToken = userToken.trim();
         contextToken = contextToken.trim();
         
+        log.info("Normalized tokens:");
+        log.info("  - User token: '" + userToken + "'");
+        log.info("  - Context token: '" + contextToken + "'");
+        
         // Check token match
         if (!userToken.equals(contextToken)) {
-            if (log.isDebugEnabled()) {
-                log.debug("OTP token mismatch. User: '" + userToken + "', Context: '" + contextToken + "'");
-            }
+            log.warn("OTP Validation Failed: Token mismatch");
+            log.warn("  - User: '" + userToken + "'");
+            log.warn("  - Context: '" + contextToken + "'");
             return new OTPValidationResult(false, 
                 "Invalid OTP code. Please enter the complete " + contextToken.length() + "-digit OTP sent to your mobile.");
         }
@@ -101,20 +106,25 @@ public class OTPService {
             long elapsedTime = currentTime - sentTime;
             long validityInMillis = validityPeriod * 60 * 1000; // Convert minutes to milliseconds
             
+            log.info("OTP Expiry Check:");
+            log.info("  - Current time: " + currentTime);
+            log.info("  - Sent time: " + sentTime);
+            log.info("  - Elapsed time (ms): " + elapsedTime);
+            log.info("  - Validity period (ms): " + validityInMillis);
+            
             if (elapsedTime > validityInMillis) {
-                if (log.isDebugEnabled()) {
-                    log.debug("OTP token expired. Elapsed time: " + elapsedTime + 
-                             "ms, Validity period: " + validityInMillis + "ms");
-                }
+                log.warn("OTP Validation Failed: Token expired");
+                log.warn("  - Elapsed: " + elapsedTime + "ms, Validity: " + validityInMillis + "ms");
                 return new OTPValidationResult(false, "OTP has expired. Please request a new code.");
             }
         }
         
+        log.info("OTP Validation Successful: All checks passed");
         return new OTPValidationResult(true, "OTP validation successful");
     }
 
     /**
-     * Stores OTP information in authentication context
+     * Stores OTP information in authentication context with conflict handling
      * 
      * @param context Authentication context
      * @param otpToken Generated OTP token
@@ -127,17 +137,28 @@ public class OTPService {
             return;
         }
         
-        // Store the generated OTP token for validation
-        context.setProperty(SMSOTPConstants.OTP_TOKEN, otpToken);
-        
-        // Store the actual OTP sent (may be different from generated for external SMS services)
-        if (actualOtpSent != null && !actualOtpSent.isEmpty()) {
-            context.setProperty("CLIENT_OTP_VALIDATION", actualOtpSent);
+        try {
+            // Store the generated OTP token for validation
+            context.setProperty(SMSOTPConstants.OTP_TOKEN, otpToken);
+            
+            // Store the actual OTP sent (may be different from generated for external SMS services)
+            if (actualOtpSent != null && !actualOtpSent.isEmpty()) {
+                context.setProperty("CLIENT_OTP_VALIDATION", actualOtpSent);
+            }
+            
+            // Store the time when OTP was sent
+            long sentTime = System.currentTimeMillis();
+            context.setProperty(SMSOTPConstants.SENT_OTP_TOKEN_TIME, sentTime);
+            
+            log.info("Successfully stored OTP context properties:");
+            log.info("  - OTP Token: " + (otpToken != null ? "***" + otpToken.substring(Math.max(0, otpToken.length()-2)) : "null"));
+            log.info("  - Actual OTP: " + (actualOtpSent != null ? "***" + actualOtpSent.substring(Math.max(0, actualOtpSent.length()-2)) : "null"));
+            log.info("  - Sent Time: " + sentTime);
+            
+        } catch (Exception e) {
+            log.error("Error storing OTP context properties: " + e.getMessage(), e);
+            throw new RuntimeException("Failed to store OTP context", e);
         }
-        
-        // Store the time when OTP was sent
-        long sentTime = System.currentTimeMillis();
-        context.setProperty(SMSOTPConstants.SENT_OTP_TOKEN_TIME, sentTime);
         
         // Store token validity period
         String tokenExpiryTimeStr = SMSOTPUtils.getTokenExpiryTime(context);
@@ -192,6 +213,100 @@ public class OTPService {
      */
     public boolean isRetryEnabled(AuthenticationContext context) {
         return SMSOTPUtils.isRetryEnabled(context);
+    }
+
+    /**
+     * Gets OTP length from authentication context configuration
+     * 
+     * @param context Authentication context
+     * @return OTP length (default 4 if not specified)
+     */
+    private int getOTPLengthFromContext(AuthenticationContext context) {
+        int defaultLength = 4; // Default fallback
+        
+        try {
+            // First try to get from SMS payload configuration
+            String smsPayload = (String) context.getProperty("SMS_PAYLOAD_CONFIG");
+            if (smsPayload != null && !smsPayload.trim().isEmpty()) {
+                int lengthFromPayload = parseOTPLengthFromPayload(smsPayload);
+                if (lengthFromPayload > 0) {
+                    log.info("OTP length from SMS payload: " + lengthFromPayload);
+                    return lengthFromPayload;
+                }
+            }
+            
+            // Try to get from EMAIL payload configuration
+            String emailPayload = (String) context.getProperty("EMAIL_PAYLOAD_CONFIG");
+            if (emailPayload != null && !emailPayload.trim().isEmpty()) {
+                int lengthFromPayload = parseOTPLengthFromPayload(emailPayload);
+                if (lengthFromPayload > 0) {
+                    log.info("OTP length from EMAIL payload: " + lengthFromPayload);
+                    return lengthFromPayload;
+                }
+            }
+            
+            // Try to get from authenticator properties
+            java.util.Map<String, String> authenticatorProperties = context.getAuthenticatorProperties();
+            if (authenticatorProperties != null) {
+                String otpLengthStr = authenticatorProperties.get("otpDigit");
+                if (otpLengthStr != null && !otpLengthStr.trim().isEmpty()) {
+                    int lengthFromProps = Integer.parseInt(otpLengthStr.trim());
+                    if (lengthFromProps > 0 && lengthFromProps <= 8) {
+                        log.info("OTP length from authenticator properties: " + lengthFromProps);
+                        return lengthFromProps;
+                    }
+                }
+            }
+            
+            log.info("Using default OTP length: " + defaultLength);
+            return defaultLength;
+            
+        } catch (Exception e) {
+            log.warn("Error getting OTP length from context, using default: " + e.getMessage());
+            return defaultLength;
+        }
+    }
+    
+    /**
+     * Parses OTP length from JSON payload string
+     * 
+     * @param payload JSON payload string
+     * @return OTP length or 0 if not found
+     */
+    private int parseOTPLengthFromPayload(String payload) {
+        try {
+            log.debug("Parsing OTP length from payload: " + payload);
+            
+            // Simple JSON parsing for otpDigit value
+            // Look for "otpDigit":"number" or "otpDigit":number patterns
+            
+            // Pattern 1: "otpDigit":"6"
+            String pattern1 = "\"otpDigit\"\\s*:\\s*\"(\\d+)\"";
+            java.util.regex.Pattern p1 = java.util.regex.Pattern.compile(pattern1);
+            java.util.regex.Matcher m1 = p1.matcher(payload);
+            if (m1.find()) {
+                int length = Integer.parseInt(m1.group(1));
+                log.debug("Found otpDigit (quoted): " + length);
+                return length;
+            }
+            
+            // Pattern 2: "otpDigit":6
+            String pattern2 = "\"otpDigit\"\\s*:\\s*(\\d+)";
+            java.util.regex.Pattern p2 = java.util.regex.Pattern.compile(pattern2);
+            java.util.regex.Matcher m2 = p2.matcher(payload);
+            if (m2.find()) {
+                int length = Integer.parseInt(m2.group(1));
+                log.debug("Found otpDigit (unquoted): " + length);
+                return length;
+            }
+            
+            log.debug("No otpDigit found in payload");
+            return 0;
+            
+        } catch (Exception e) {
+            log.warn("Error parsing OTP length from payload: " + e.getMessage());
+            return 0;
+        }
     }
 
     /**

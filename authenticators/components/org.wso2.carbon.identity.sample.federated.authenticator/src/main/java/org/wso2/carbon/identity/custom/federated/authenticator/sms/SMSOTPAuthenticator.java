@@ -59,7 +59,33 @@ public class SMSOTPAuthenticator implements Serializable {
      * @param request HTTP request
      * @return true if can handle, false otherwise
      */
+    /**
+     * Checks if this authenticator can handle the current request for SMS OTP
+     * @param request HTTP request
+     * @return true if can handle SMS OTP, false otherwise
+     */
     public boolean canHandle(HttpServletRequest request) {
+        log.debug("###################### " + request + " ######################");
+
+        String otpChannel = request.getParameter("otpChannel");
+        String selectedChannel = request.getParameter("selectedOtpChannel");
+        String channelSelection = request.getParameter("channelSelection");
+
+        log.debug("SMS canHandle - OTP Channel: " + otpChannel);
+        log.debug("SMS canHandle - Selected Channel: " + selectedChannel);
+        log.debug("SMS canHandle - Channel Selection: " + channelSelection);
+
+        // Only handle if SMS channel is selected or OTP params are present for SMS
+        if ("SMS".equalsIgnoreCase(otpChannel) || "sms".equalsIgnoreCase(selectedChannel)) {
+            log.debug("SMS channel selected, SMS authenticator will handle");
+            return true;
+        }
+        // If EMAIL channel is selected, don't handle (let email authenticator handle)
+        if ("EMAIL".equalsIgnoreCase(otpChannel) || "email".equalsIgnoreCase(selectedChannel)) {
+            log.debug("Email channel selected, SMS authenticator will not handle");
+            return false;
+        }
+        // Standard SMS OTP parameter checks for existing sessions
         return hasOTPParameter(request) || 
                hasResendParameter(request) || 
                hasMobileNumberParameter(request);
@@ -145,6 +171,28 @@ public class SMSOTPAuthenticator implements Serializable {
     public void handleSMSOTPAuthentication(HttpServletRequest request, HttpServletResponse response,
                                          AuthenticationContext context) throws AuthenticationFailedException {
         
+        // Check parameters
+        String otpChannel = request.getParameter("otpChannel");
+        String selectedChannel = request.getParameter("selectedOtpChannel");
+        String otpCode = request.getParameter("OTPcode");
+        String channelSelection = request.getParameter("channelSelection");
+        
+        log.debug("SMS handleAuthentication - OTP Channel: " + otpChannel);
+        log.debug("SMS handleAuthentication - Selected Channel: " + selectedChannel);
+        log.debug("SMS handleAuthentication - OTP Code: " + otpCode);
+        log.debug("SMS handleAuthentication - Channel Selection: " + channelSelection);
+        
+        // Always show channel selection page on first visit (no OTP code, no resend, no mobile number)
+        if (StringUtils.isEmpty(otpCode) &&
+            !hasResendParameter(request) &&
+            !hasMobileNumberParameter(request) &&
+            StringUtils.isEmpty(otpChannel) &&
+            StringUtils.isEmpty(selectedChannel)) {
+            log.debug("First visit - showing OTP channel selection page");
+            showChannelSelectionPage(request, response, context);
+            return;
+        }
+        
         // Clean up any existing session data to prevent conflicts
         cleanupSessionData(context);
         
@@ -197,6 +245,26 @@ public class SMSOTPAuthenticator implements Serializable {
         
         if (log.isDebugEnabled()) {
             log.debug("Processing SMS OTP authentication response");
+        }
+
+        // Check if this is a channel selection response
+        String selectedChannel = request.getParameter("otpChannel");
+        if (StringUtils.isNotEmpty(selectedChannel)) {
+            log.debug("Processing channel selection: " + selectedChannel);
+
+            // Store the selected channel in context
+            context.setProperty("SELECTED_OTP_CHANNEL", selectedChannel);
+
+            if ("SMS".equals(selectedChannel)) {
+                // Proceed with SMS OTP
+                log.debug("SMS channel selected - proceeding with SMS OTP");
+                handleSMSOTPAuthentication(request, response, context);
+                return;
+            } else if ("EMAIL".equals(selectedChannel)) {
+                // This should not happen in SMS authenticator, but log for debugging
+                log.debug("Email channel selected but in SMS authenticator - this should be handled by parent");
+                return;
+            }
         }
 
         // Add synchronization to prevent concurrent session conflicts
@@ -672,6 +740,39 @@ public class SMSOTPAuthenticator implements Serializable {
         } catch (Exception e) {
             // Log but don't fail the authentication process due to cleanup issues
             log.warn("Warning during session cleanup: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Show OTP channel selection page to user
+     */
+    private void showChannelSelectionPage(HttpServletRequest request, HttpServletResponse response,
+            AuthenticationContext context) throws AuthenticationFailedException {
+        try {
+            String queryParams = buildQueryParams(context);
+            
+            // Use the authentication endpoint URL pattern similar to other WSO2 pages
+            String baseUrl = request.getScheme() + "://" + request.getServerName() + ":" + request.getServerPort();
+            
+            // Redirect to custom channel selection page
+            String channelSelectionPage = baseUrl + "/authenticationendpoint/otpChannelSelection.jsp";
+            String redirectUrl = channelSelectionPage;
+            
+            // Add query parameters
+            if (StringUtils.isNotEmpty(queryParams)) {
+                redirectUrl = redirectUrl + "?" + queryParams;
+                redirectUrl = redirectUrl + "&channelSelection=true";
+            } else {
+                redirectUrl = redirectUrl + "?channelSelection=true";
+            }
+            
+            log.info("Redirecting to OTP channel selection page: " + redirectUrl);
+            
+            response.sendRedirect(redirectUrl);
+            
+        } catch (IOException e) {
+            log.error("Error redirecting to channel selection page", e);
+            throw new AuthenticationFailedException("Error redirecting to channel selection page", e);
         }
     }
 }

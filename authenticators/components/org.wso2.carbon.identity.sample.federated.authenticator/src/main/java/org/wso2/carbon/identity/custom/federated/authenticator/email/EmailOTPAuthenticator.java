@@ -35,6 +35,32 @@ import java.io.Serializable;
  */
 public class EmailOTPAuthenticator implements Serializable {
 
+    /**
+     * Checks if this authenticator can handle the current request for Email OTP
+     * @param request HTTP request
+     * @return true if can handle Email OTP, false otherwise
+     */
+    public boolean canHandle(HttpServletRequest request) {
+        if (log.isDebugEnabled()) {
+            log.debug("[EmailOTPAuthenticator] canHandle() called");
+        }
+        String otpChannel = request.getParameter("otpChannel");
+        String selectedChannel = request.getParameter("selectedOtpChannel");
+        String emailCode = request.getParameter("OTPcode");
+        // Only handle if EMAIL channel is selected or OTP params are present for Email
+        if ("EMAIL".equalsIgnoreCase(otpChannel) || "email".equalsIgnoreCase(selectedChannel)) {
+            log.debug("Email channel selected, Email authenticator will handle");
+            return true;
+        }
+        // If SMS channel is selected, don't handle (let SMS authenticator handle)
+        if ("SMS".equalsIgnoreCase(otpChannel) || "sms".equalsIgnoreCase(selectedChannel)) {
+            log.debug("SMS channel selected, Email authenticator will not handle");
+            return false;
+        }
+        // Standard Email OTP parameter check (if OTP code is present)
+        return StringUtils.isNotEmpty(emailCode);
+    }
+
     private static final long serialVersionUID = 1L;
     private static final Log log = LogFactory.getLog(EmailOTPAuthenticator.class);
 

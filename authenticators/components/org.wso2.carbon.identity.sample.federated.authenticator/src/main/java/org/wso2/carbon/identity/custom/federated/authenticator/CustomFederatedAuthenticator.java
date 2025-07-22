@@ -47,8 +47,44 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
 
     @Override
     public boolean canHandle(HttpServletRequest request) {
-        // Check if SMS OTP can handle the request
-        return getSmsOTPAuthenticator().canHandle(request);
+
+        log.debug("๕๕๕๕๕๕๕๕๕๕๕ start canHandle ๔๔๔๔๔๔๔๔๔๔๔๔ ");
+        String selectedChannel = request.getParameter("otpChannel");
+        log.debug("************ selectedChannel : " + selectedChannel);
+        // Custom logic: If user has not selected OTP channel, redirect to channel selection page
+        // String selectedChannel = null; //request.getParameter("otpChannel");
+        // if (StringUtils.isEmpty(selectedChannel)) {
+        //     try {
+        //         // Build redirect URL to channel selection JSP
+        //         String contextId = request.getParameter("sessionDataKey");
+        //         String baseUrl = ConfigurationFacade.getInstance().getAuthenticationEndpointURL();
+        //         String redirectUrl = baseUrl.replace("login.do", "otpChannelSelection.jsp");
+        //         if (StringUtils.isNotEmpty(contextId)) {
+        //             redirectUrl += "?sessionDataKey=" + java.net.URLEncoder.encode(contextId, "UTF-8");
+        //         }
+        //         // Actually redirect
+        //         HttpServletResponse response = (HttpServletResponse) request.getAttribute("HTTP_RESPONSE");
+        //         if (response != null) {
+        //             response.sendRedirect(redirectUrl);
+        //         } else {
+        //             // fallback: try to get response from thread local (WSO2 style)
+        //             javax.servlet.http.HttpServletResponse resp = null;
+        //             org.apache.axis2.context.MessageContext axis2MsgCtx = org.apache.axis2.context.MessageContext.getCurrentMessageContext();
+        //             if (axis2MsgCtx != null) {
+        //                 Object responseObj = axis2MsgCtx.getProperty("HTTPServletResponse");
+        //                 if (responseObj instanceof javax.servlet.http.HttpServletResponse) {
+        //                     resp = (javax.servlet.http.HttpServletResponse) responseObj;
+        //                     resp.sendRedirect(redirectUrl);
+        //                 }
+        //             }
+        //         }
+        //     } catch (Exception e) {
+        //         log.error("Error redirecting to OTP channel selection page", e);
+        //     }
+        //     return false;
+        // }
+        // If user has selected channel, allow processing to continue
+        return true;
     }
 
     @Override
@@ -288,126 +324,51 @@ public class CustomFederatedAuthenticator extends AbstractApplicationAuthenticat
     @Override
     protected void initiateAuthenticationRequest(HttpServletRequest request, HttpServletResponse response,
             AuthenticationContext context) throws AuthenticationFailedException {
-
-        // Determine OTP type - can be configured via authenticator properties
-        // or through user preference/request parameter
-        String type = determineOTPType(request, context);
-
-        if (context == null) {
-            log.error("AuthenticationContext is null");
-            redirectToErrorPage(response, context, "Authentication context is invalid. Please try again.");
-            return;
-        }
-
         try {
 
-            Map<String, String> authenticatorProperties = context.getAuthenticatorProperties();
-            if (authenticatorProperties == null) {
-                log.error("Authenticator properties is null");
-                redirectToErrorPage(response, context,
-                        "Authenticator configuration is missing. Please contact administrator.");
-                return;
+            log.debug("################### start initiateAuthenticationRequest ################### ");
+            String contextId = request.getParameter("sessionDataKey");
+            String baseUrl = ConfigurationFacade.getInstance().getAuthenticationEndpointURL();
+            String redirectUrl = baseUrl.replace("login.do", "otpChannelSelection.jsp");
+            if (StringUtils.isNotEmpty(contextId)) {
+                redirectUrl += "?sessionDataKey=" + java.net.URLEncoder.encode(contextId, "UTF-8");
             }
-
-            String payload = authenticatorProperties.get(SMSOTPConstants.PAYLOAD);
-
-            if (StringUtils.isEmpty(payload)) {
-                log.error("Payload is empty or null");
-                redirectToErrorPage(response, context,
-                        "SMS service configuration is missing. Please contact administrator.");
-                return;
+            // Actually redirect
+            if (response != null) {
+                response.sendRedirect(redirectUrl);
+            } else {
+                // fallback: try to get response from thread local (WSO2 style)
+                javax.servlet.http.HttpServletResponse resp = null;
+                org.apache.axis2.context.MessageContext axis2MsgCtx = org.apache.axis2.context.MessageContext.getCurrentMessageContext();
+                if (axis2MsgCtx != null) {
+                    Object responseObj = axis2MsgCtx.getProperty("HTTPServletResponse");
+                    if (responseObj instanceof javax.servlet.http.HttpServletResponse) {
+                        resp = (javax.servlet.http.HttpServletResponse) responseObj;
+                        resp.sendRedirect(redirectUrl);
+                    }
+                }
             }
-
-            net.minidev.json.parser.JSONParser parser = new net.minidev.json.parser.JSONParser(
-                    net.minidev.json.parser.JSONParser.DEFAULT_PERMISSIVE_MODE);
-            JSONObject root = null;
-            try {
-                root = (JSONObject) parser.parse(payload); // {"sendOneTimePW":{...}}
-            } catch (net.minidev.json.parser.ParseException e) {
-                log.error("Failed to parse payload JSON", e);
-                redirectToErrorPage(response, context,
-                        "Invalid SMS service configuration. Please contact administrator.");
-                return;
-            }
-
-            if (root == null) {
-                log.error("Parsed JSON root is null");
-                redirectToErrorPage(response, context,
-                        "Invalid SMS service configuration. Please contact administrator.");
-                return;
-            }
-
-            JSONObject sendOTP = (JSONObject) root.get("sendOneTimePW"); // {...}
-            if (sendOTP == null) {
-                log.error("sendOneTimePW object not found in payload");
-                redirectToErrorPage(response, context,
-                        "SMS service configuration is incomplete. Please contact administrator.");
-                return;
-            }
-
-            if ("sms".equals(type)) {
-                log.debug("~~~~~~~~~~~~ start function handleSMSOTPAuthentication ~~~~~~~~~~~~");
-                getSmsOTPAuthenticator().handleSMSOTPAuthentication(request, response, context);
-            }
-
-            if ("email".equals(type)) {
-                log.debug("~~~~~~~~~~~~ start function handleEmailOTPAuthentication ~~~~~~~~~~~~");
-                getEmailOTPAuthenticator().handleEmailOTPAuthentication(request, response, context);
-            }
-
-            return;
-
         } catch (Exception e) {
-            log.error("Error processing authentication request", e);
-            redirectToErrorPage(response, context, "An unexpected error occurred. Please try again.");
-            return;
+            log.error("Error redirecting to OTP channel selection page", e);
+            throw new AuthenticationFailedException("Error redirecting to OTP channel selection page", e);
         }
     }
 
     @Override
     protected void processAuthenticationResponse(HttpServletRequest request, HttpServletResponse response,
             AuthenticationContext context) throws AuthenticationFailedException {
+                log.debug("################### start processAuthenticationResponse ################### ");
+        String otpChannel = request.getParameter("otpChannel");
 
-        if (context == null) {
-            log.error("AuthenticationContext is null");
-            redirectToErrorPage(response, context, "Authentication session expired. Please try again.");
-            return;
-        }
-
-        try {
-            // Check if this is a channel selection response
-            String selectedChannel = request.getParameter("otpChannel");
-            if (StringUtils.isNotEmpty(selectedChannel)) {
-                log.debug("Processing channel selection: " + selectedChannel);
-
-                // Store the selected channel in context
-                context.setProperty("SELECTED_OTP_CHANNEL", selectedChannel);
-
-                if ("SMS".equals(selectedChannel)) {
-                    // Proceed with SMS OTP
-                    getSmsOTPAuthenticator().handleSMSOTPAuthentication(request, response, context);
-                    return;
-                } else if ("EMAIL".equals(selectedChannel)) {
-                    // Proceed with Email OTP
-                    log.debug("Email OTP selected - implementing email flow");
-                    getEmailOTPAuthenticator().handleEmailOTPAuthentication(request, response, context);
-                    return;
-                }
-            }
-
-            // Determine which OTP type to process based on context
-            String otpChannelInContext = (String) context.getProperty("SELECTED_OTP_CHANNEL");
-            if ("EMAIL".equals(otpChannelInContext)) {
-                // Process Email OTP authentication response
-                getEmailOTPAuthenticator().processAuthenticationResponse(request, response, context);
-            } else {
-                // Process SMS OTP authentication response (default)
-                getSmsOTPAuthenticator().processAuthenticationResponse(request, response, context);
-            }
-        } catch (Exception e) {
-            log.error("Error processing authentication response", e);
-            redirectToErrorPage(response, context, "Error processing authentication response. Please try again.");
-            return;
+        log.debug( "~~~~~~~ otpChannel => " + otpChannel);
+        if ("sms".equalsIgnoreCase(otpChannel)) {
+            // ดำเนินการ OTP ผ่าน SMS
+            getSmsOTPAuthenticator().processAuthenticationResponse(request, response, context);
+        } else if ("email".equalsIgnoreCase(otpChannel)) {
+            // ดำเนินการ OTP ผ่าน Email
+            getEmailOTPAuthenticator().processAuthenticationResponse(request, response, context);
+        } else {
+            throw new AuthenticationFailedException("Unknown OTP channel: " + otpChannel);
         }
     }
 
